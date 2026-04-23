@@ -6,12 +6,23 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import OperationalError
 
-from app.api.routes import auth, health, users
+from app.api.routes import (
+    admin,
+    auth,
+    chat,
+    conversations,
+    files,
+    health,
+    messages,
+    search,
+    usage,
+    users,
+)
 from app.core.config import settings
 from app.core.security import get_password_hash
 from app.db.base import Base
 from app.db.session import SessionLocal, engine
-from app.models import User  # noqa: F401 - ensure model import for metadata
+import app.models  # noqa: F401 - ensure model import for metadata
 from app.models.user import User
 from app.services.cache import cache
 
@@ -96,4 +107,11 @@ def root() -> dict:
 
 app.include_router(health.router, prefix=settings.API_V1_PREFIX)
 app.include_router(auth.router, prefix=settings.API_V1_PREFIX)
+app.include_router(chat.router, prefix=settings.API_V1_PREFIX)
+app.include_router(files.router, prefix=settings.API_V1_PREFIX)
 app.include_router(users.router, prefix=settings.API_V1_PREFIX)
+app.include_router(conversations.router, prefix=settings.API_V1_PREFIX)
+app.include_router(messages.router, prefix=settings.API_V1_PREFIX)
+app.include_router(search.router, prefix=settings.API_V1_PREFIX)
+app.include_router(admin.router, prefix=settings.API_V1_PREFIX)
+app.include_router(usage.router, prefix=settings.API_V1_PREFIX)

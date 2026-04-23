@@ -39,6 +39,13 @@ class Settings(BaseSettings):
 
     USER_LIST_CACHE_TTL_SECONDS: int = 30
 
+    USAGE_WINDOW_DAYS: int = 30
+    QUOTA_ALERT_THRESHOLD_RATIO: float = 0.8
+    QUOTA_USER_MESSAGE_LIMIT: int = 400
+    QUOTA_USER_TOKEN_LIMIT: int = 250000
+    QUOTA_ADMIN_MESSAGE_LIMIT: int = 3000
+    QUOTA_ADMIN_TOKEN_LIMIT: int = 1500000
+
     @property
     def is_production(self) -> bool:
         return self.ENV.lower() == "production"

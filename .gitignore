@@ -27,6 +27,7 @@ config.json
 
 # Local database files
 backend/*.db
+backend/storage/uploads/
 
 # Python tooling caches
 .pytest_cache/

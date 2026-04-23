@@ -5,7 +5,46 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- TBD
+- Backend admin governance API (`/api/v1/admin/*`) with:
+  - Audit trail listing with filters.
+  - Session governance (list and revoke sessions).
+  - Usage overview endpoint with warning/exceeded user counts.
+- Backend user usage API (`/api/v1/usage/me`) for per-user quota insight.
+- Session-aware JWT login flow (`sid` claim + persisted `user_sessions`) and logout revocation support.
+- Governance persistence layer:
+  - `audit_logs`
+  - `user_sessions`
+  - `usage_events`
+- Quota/metering service with alert levels (`ok`/`warning`/`exceeded`) and chat quota enforcement.
+- New authenticated web search API (`/api/v1/search/web`) for citation retrieval.
+- New backend test coverage for governance APIs, session revocation, and quota enforcement.
+- Backend file upload API (`/api/v1/files/upload`) with authenticated access, extension validation, size limits, and text preview extraction.
+- Desktop attachment workflow in chat composer:
+  - Pick/clear pending attachments.
+  - Upload-to-backend flow when backend streaming mode is enabled.
+  - Local preview extraction fallback for text-like files.
+- Multimodal image support for chat turns:
+  - Desktop app now serializes selected image attachments as inline base64 payloads for the active send turn.
+  - Backend and local Gemini adapters now map inline image payloads to Gemini SDK image parts.
+- New backend test coverage for file upload and inline image attachment forwarding in chat stream.
+
+### Changed
+- Admin desktop app UI upgraded from text-list style to table/dashboard workflow:
+  - User table view with row selection.
+  - New Governance tab (sessions + audit stream + revoke actions).
+  - New Usage/Quota tab (summary cards, progress bars, top-user consumption view, alert states).
+- User desktop app top bar now includes live usage/quota badge and progress indicator when backend mode is enabled.
+- Chat streaming now records usage events and enforces quota window limits before generation.
+- Admin-sensitive user operations now emit structured audit entries and admin action usage events.
+- Chat send pipeline now supports attachment-only turns by composing a fallback user instruction.
+- Runtime attachment payloads are sent to model requests without persisting binary content to local conversation history.
+- Chat streaming now supports optional web grounding context and emits citations in SSE `done` payload.
+- Desktop user app can enable web citations from settings and appends source references to backend-streamed answers.
+- Clean-code pass across backend + desktop modules:
+  - Fixed async exception-capture closures that could trigger undefined-name lint errors.
+  - Normalized SQLAlchemy relationship typing with forward-reference safe annotations.
+  - Removed unused imports and aligned formatting to Black conventions.
+  - Quality gate is green (`ruff`, `black --check`, `pytest`, `compileall`).
 
 ## [0.2.0] - 2026-04-23
 

@@ -1,7 +1,6 @@
 """Quản lý cấu hình ứng dụng - lưu vào config.json"""
 
 import json
-import os
 from pathlib import Path
 
 CONFIG_PATH = Path(__file__).parent.parent / "config.json"
@@ -14,6 +13,11 @@ DEFAULTS = {
     "max_output_tokens": 8192,
     "theme": "dark",
     "language": "vi",
+    "use_backend_stream": False,
+    "backend_api_url": "http://127.0.0.1:8080",
+    "backend_access_token": "",
+    "use_web_citations": True,
+    "web_citation_max_results": 3,
     "system_prompt": (
         "Bạn là trợ lý AI thông minh, thân thiện. "
         "Luôn trả lời bằng Tiếng Việt, giải thích rõ ràng, xưng hô bạn/tôi. "

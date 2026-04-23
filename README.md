@@ -10,6 +10,31 @@ Desktop AI assistant with a dedicated backend service for authentication, user m
 - Data: SQLite by default, Postgres-ready by configuration
 - Cache: Redis with in-memory fallback
 
+## Backend Capability Highlights
+
+- Auth and session governance
+	- JWT login with session ID (`sid`) claim.
+	- Persistent `user_sessions` tracking and logout/session revocation.
+
+- Conversation and chat runtime
+	- Server-side conversations and messages.
+	- SSE chat streaming endpoint: `/api/v1/chat/stream`.
+
+- Admin governance and usage insight
+	- Audit trail API: `/api/v1/admin/audit`.
+	- Session governance APIs: `/api/v1/admin/sessions` and revoke endpoints.
+	- Usage overview API: `/api/v1/admin/usage`.
+	- Per-user usage API: `/api/v1/usage/me`.
+
+- Search and citation grounding
+	- Authenticated web search endpoint: `/api/v1/search/web`.
+	- Optional citation enrichment in chat streaming done payload.
+
+- Metering and quota controls
+	- Usage events for chat messages/tokens, uploads, and admin actions.
+	- Alert levels: `ok`, `warning`, `exceeded`.
+	- Quota enforcement at chat request time.
+
 ## Quick Start
 
 1. Create and activate Python virtual environment.
@@ -64,18 +89,36 @@ Build outputs:
 - `dist/desktop/AIAssistUser.exe`
 - `dist/desktop/AIAssistAdmin.exe`
 
+If Windows Smart App Control blocks unsigned `.exe` binaries, run source launchers instead (Smart App Control has no per-app allowlist):
+
+- `run-user-app.cmd`
+- `run-admin-app.cmd`
+- `run-user-app.vbs` (windowless launcher)
+- `run-admin-app.vbs` (windowless launcher)
+
 ## Desktop UX Highlights
 
 - User app (`app.py`)
 	- Sidebar conversation search.
+	- Retry, regenerate, edit, and branch conversation actions.
+	- Draft persistence while typing.
+	- File and image attachments (local and backend-stream mode).
+	- Backend branch sync support for server-side conversation branching.
 	- Export current conversation to markdown.
 	- Clear current conversation with confirmation.
 	- Bilingual UI support (`vi`/`en`) with language setting persistence.
-	- Keyboard shortcuts: `Ctrl+N` (new conversation), `Ctrl+E` (export), `Ctrl+K` (focus search).
+	- Optional backend SSE streaming mode (configure backend URL and access token in settings).
+	- Optional web citation toggle + source count in settings.
+	- Usage/quota badge and progress bar in top bar when backend mode is enabled.
+	- Keyboard shortcuts: `Ctrl+N` (new conversation), `Ctrl+E` (export), `Ctrl+K` (focus search), `Ctrl+R` (retry), `Ctrl+O` (attach file).
 
 - Admin app (`admin_app.py`)
+	- Table-based user management UI (modernized from textbox list).
 	- Live user statistics cards (total, active, inactive, admins).
 	- Full user lifecycle controls: create, update profile, reset password, activate/deactivate, delete.
+	- Governance tab for audit trail viewing and session revocation.
+	- Usage/Quota tab with usage summary, quota progress bars, and top-user consumption list.
+	- Alert feedback when warning/exceeded usage thresholds are detected.
 	- Session controls: relogin and logout.
 	- CSV export of current user page.
 	- Bilingual UI support (`vi`/`en`) shared with desktop config.
@@ -154,5 +197,4 @@ git push origin v0.1.0
 - LICENSE
 - .pre-commit-config.yaml
 - pyproject.toml
-# Aiva
 

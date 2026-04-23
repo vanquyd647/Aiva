@@ -10,3 +10,4 @@ class TokenOut(BaseModel):
     token_type: str = "bearer"
     expires_in: int
     user: UserOut
+    session_id: str | None = None

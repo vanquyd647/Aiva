@@ -19,6 +19,7 @@ from app.schemas.user import (
     UserUpdate,
 )
 from app.services.cache import cache
+from app.services.governance import record_usage_event, write_audit_log
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -83,10 +84,7 @@ async def list_users(
 
     total = query.count()
     items = (
-        query.order_by(User.created_at.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-        .all()
+        query.order_by(User.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
     )
 
     payload = {
@@ -102,11 +100,21 @@ async def list_users(
 @router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 async def create_user(
     payload: UserCreate,
-    _: User = Depends(get_current_admin_user),
+    current_admin: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db),
 ):
     existing = db.query(User).filter(User.email == payload.email.lower()).first()
     if existing:
+        write_audit_log(
+            db,
+            actor_user_id=current_admin.id,
+            action="users.create",
+            target_type="user",
+            target_id=str(existing.id),
+            status="failed",
+            severity="warning",
+            details={"email": payload.email.lower(), "reason": "email_exists"},
+        )
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already exists")
 
     user = User(
@@ -120,6 +128,24 @@ async def create_user(
     db.commit()
     db.refresh(user)
     await _invalidate_users_cache()
+    write_audit_log(
+        db,
+        actor_user_id=current_admin.id,
+        action="users.create",
+        target_type="user",
+        target_id=str(user.id),
+        status="success",
+        severity="info",
+        details={"email": user.email, "role": user.role, "is_active": user.is_active},
+    )
+    record_usage_event(
+        db,
+        user_id=current_admin.id,
+        metric="admin_actions",
+        quantity=1,
+        source="admin",
+        metadata={"action": "users.create", "target_user_id": user.id},
+    )
     return user
 
 
@@ -134,6 +160,16 @@ async def update_user(
     update_data = payload.model_dump(exclude_unset=True, exclude_none=True)
 
     if not update_data:
+        write_audit_log(
+            db,
+            actor_user_id=current_admin.id,
+            action="users.update",
+            target_type="user",
+            target_id=str(user_id),
+            status="failed",
+            severity="warning",
+            details={"reason": "empty_payload"},
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="At least one field is required",
@@ -142,22 +178,48 @@ async def update_user(
     normalized_email = None
     if "email" in update_data:
         normalized_email = update_data["email"].strip().lower()
-        existing = (
-            db.query(User)
-            .filter(User.email == normalized_email, User.id != user_id)
-            .first()
-        )
+        existing = db.query(User).filter(User.email == normalized_email, User.id != user_id).first()
         if existing:
+            write_audit_log(
+                db,
+                actor_user_id=current_admin.id,
+                action="users.update",
+                target_type="user",
+                target_id=str(user_id),
+                status="failed",
+                severity="warning",
+                details={"reason": "email_exists", "email": normalized_email},
+            )
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already exists")
 
     new_role = update_data.get("role")
     if user.id == current_admin.id and new_role == "user":
+        write_audit_log(
+            db,
+            actor_user_id=current_admin.id,
+            action="users.update",
+            target_type="user",
+            target_id=str(user_id),
+            status="failed",
+            severity="warning",
+            details={"reason": "self_downgrade_blocked"},
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Admin cannot downgrade itself",
         )
 
     if user.id == current_admin.id and update_data.get("is_active") is False:
+        write_audit_log(
+            db,
+            actor_user_id=current_admin.id,
+            action="users.update",
+            target_type="user",
+            target_id=str(user_id),
+            status="failed",
+            severity="warning",
+            details={"reason": "self_deactivation_blocked"},
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Admin cannot deactivate itself",
@@ -175,6 +237,24 @@ async def update_user(
     db.commit()
     db.refresh(user)
     await _invalidate_users_cache()
+    write_audit_log(
+        db,
+        actor_user_id=current_admin.id,
+        action="users.update",
+        target_type="user",
+        target_id=str(user.id),
+        status="success",
+        severity="info",
+        details={"fields": sorted(update_data.keys())},
+    )
+    record_usage_event(
+        db,
+        user_id=current_admin.id,
+        metric="admin_actions",
+        quantity=1,
+        source="admin",
+        metadata={"action": "users.update", "target_user_id": user.id},
+    )
     return user
 
 
@@ -182,7 +262,7 @@ async def update_user(
 async def reset_user_password(
     user_id: int,
     payload: UserPasswordReset,
-    _: User = Depends(get_current_admin_user),
+    current_admin: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db),
 ):
     user = _get_user_or_404(db, user_id)
@@ -190,6 +270,23 @@ async def reset_user_password(
     db.commit()
     db.refresh(user)
     await _invalidate_users_cache()
+    write_audit_log(
+        db,
+        actor_user_id=current_admin.id,
+        action="users.password_reset",
+        target_type="user",
+        target_id=str(user.id),
+        status="success",
+        severity="warning",
+    )
+    record_usage_event(
+        db,
+        user_id=current_admin.id,
+        metric="admin_actions",
+        quantity=1,
+        source="admin",
+        metadata={"action": "users.password_reset", "target_user_id": user.id},
+    )
     return user
 
 
@@ -203,6 +300,16 @@ async def update_user_status(
     user = _get_user_or_404(db, user_id)
 
     if user.id == current_admin.id and not payload.is_active:
+        write_audit_log(
+            db,
+            actor_user_id=current_admin.id,
+            action="users.status",
+            target_type="user",
+            target_id=str(user.id),
+            status="failed",
+            severity="warning",
+            details={"reason": "self_deactivation_blocked"},
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Admin cannot deactivate itself",
@@ -212,6 +319,24 @@ async def update_user_status(
     db.commit()
     db.refresh(user)
     await _invalidate_users_cache()
+    write_audit_log(
+        db,
+        actor_user_id=current_admin.id,
+        action="users.status",
+        target_type="user",
+        target_id=str(user.id),
+        status="success",
+        severity="warning",
+        details={"is_active": user.is_active},
+    )
+    record_usage_event(
+        db,
+        user_id=current_admin.id,
+        metric="admin_actions",
+        quantity=1,
+        source="admin",
+        metadata={"action": "users.status", "target_user_id": user.id},
+    )
     return user
 
 
@@ -224,6 +349,16 @@ async def delete_user(
     user = _get_user_or_404(db, user_id)
 
     if user.id == current_admin.id:
+        write_audit_log(
+            db,
+            actor_user_id=current_admin.id,
+            action="users.delete",
+            target_type="user",
+            target_id=str(user.id),
+            status="failed",
+            severity="warning",
+            details={"reason": "self_delete_blocked"},
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Admin cannot delete itself",
@@ -232,4 +367,21 @@ async def delete_user(
     db.delete(user)
     db.commit()
     await _invalidate_users_cache()
+    write_audit_log(
+        db,
+        actor_user_id=current_admin.id,
+        action="users.delete",
+        target_type="user",
+        target_id=str(user_id),
+        status="success",
+        severity="warning",
+    )
+    record_usage_event(
+        db,
+        user_id=current_admin.id,
+        metric="admin_actions",
+        quantity=1,
+        source="admin",
+        metadata={"action": "users.delete", "target_user_id": user_id},
+    )
     return None

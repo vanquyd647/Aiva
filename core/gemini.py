@@ -1,5 +1,6 @@
 """Gemini API wrapper - hỗ trợ streaming và multi-turn chat"""
 
+import base64
 import os
 import threading
 from typing import Callable
@@ -37,9 +38,26 @@ def _to_sdk_contents(messages: list[dict]) -> list[types.Content]:
     contents = []
     for msg in messages:
         role = "user" if msg["role"] == "user" else "model"
-        contents.append(
-            types.Content(role=role, parts=[types.Part(text=msg["text"])])
-        )
+
+        parts = [types.Part(text=msg.get("text", ""))]
+        for attachment in msg.get("attachments") or []:
+            content_type = str(attachment.get("content_type", "")).strip().lower()
+            if not content_type.startswith("image/"):
+                continue
+
+            data_base64 = str(attachment.get("data_base64", "")).strip()
+            if not data_base64:
+                continue
+
+            try:
+                raw = base64.b64decode(data_base64, validate=True)
+            except Exception:
+                continue
+
+            if raw:
+                parts.append(types.Part.from_bytes(data=raw, mime_type=content_type))
+
+        contents.append(types.Content(role=role, parts=parts))
     return contents
 
 
@@ -56,6 +74,7 @@ def send_message(
     - on_done(full_text): gọi khi hoàn thành
     - on_error(message): gọi nếu lỗi
     """
+
     def _run():
         try:
             client = get_client()

@@ -16,13 +16,15 @@ def list_conversations() -> list[dict]:
         try:
             with open(f, "r", encoding="utf-8") as fh:
                 data = json.load(fh)
-            convos.append({
-                "id": f.stem,
-                "title": data.get("title", "Hội thoại mới"),
-                "created_at": data.get("created_at", ""),
-                "updated_at": data.get("updated_at", ""),
-                "message_count": len(data.get("messages", [])),
-            })
+            convos.append(
+                {
+                    "id": f.stem,
+                    "title": data.get("title", "Hội thoại mới"),
+                    "created_at": data.get("created_at", ""),
+                    "updated_at": data.get("updated_at", ""),
+                    "message_count": len(data.get("messages", [])),
+                }
+            )
         except Exception:
             continue
     return convos

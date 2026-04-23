@@ -8,7 +8,6 @@ Create Date: 2026-04-23 00:00:01
 from alembic import op
 import sqlalchemy as sa
 
-
 revision = "20260423_000001"
 down_revision = None
 branch_labels = None
@@ -24,8 +23,12 @@ def upgrade() -> None:
         sa.Column("hashed_password", sa.String(length=255), nullable=False),
         sa.Column("role", sa.String(length=32), nullable=False, server_default="user"),
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.true()),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
 
