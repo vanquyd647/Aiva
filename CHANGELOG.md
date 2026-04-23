@@ -11,16 +11,21 @@ All notable changes to this project will be documented in this file.
   - User password reset endpoint.
   - Guardrails to prevent self-downgrade and self-deactivation for admins.
 - New backend test coverage for admin management flows.
+- Shared desktop i18n module (`core/i18n.py`) with Vietnamese/English dictionaries.
+- Windows desktop packaging script (`scripts/build_desktop.ps1`) for user and admin executables.
+- Release workflow Windows job to build and attach desktop executables (`AIAssistUser.exe`, `AIAssistAdmin.exe`).
 - Admin desktop UX upgrades:
   - Logout action and authentication-state handling.
   - CSV export for current user table page.
   - Pagination controls now reflect first/last page states.
   - Keyboard shortcut for quick refresh.
+  - End-to-end localized UI strings through the shared translation layer.
 - User desktop UX upgrades:
   - Conversation search in sidebar.
   - Export current conversation to markdown.
   - Clear current conversation with confirmation.
   - Keyboard shortcuts for new chat/export/search focus.
+  - End-to-end localized UI strings and language setting persistence.
 
 ## [0.1.0] - 2026-04-23
 

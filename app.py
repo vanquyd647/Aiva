@@ -11,6 +11,7 @@ import customtkinter as ctk
 
 import core.config as cfg_module
 import core.history as history
+import core.i18n as i18n
 import core.gemini as gemini
 
 # ─── Cấu hình giao diện mặc định ─────────────────────────────────────────────
@@ -21,12 +22,14 @@ APP_TITLE = "AI Assist Studio"
 APP_SUBTITLE = "Gemma Workspace"
 APP_W, APP_H = 1200, 760
 SIDEBAR_W = 250
+LANGUAGES = ["vi", "en"]
 
 
 class SettingsDialog(ctk.CTkToplevel):
-    def __init__(self, parent, cfg: dict, on_save):
+    def __init__(self, parent, cfg: dict, on_save, tr):
         super().__init__(parent)
-        self.title("⚙️  Cài Đặt")
+        self.tr = tr
+        self.title(self.tr("settings_dialog_title"))
         self.geometry("520x560")
         self.resizable(False, False)
         self.grab_set()
@@ -38,7 +41,7 @@ class SettingsDialog(ctk.CTkToplevel):
     def _build(self):
         pad = {"padx": 20, "pady": 6}
 
-        ctk.CTkLabel(self, text="Model", anchor="w").pack(fill="x", **pad)
+        ctk.CTkLabel(self, text=self.tr("settings_model"), anchor="w").pack(fill="x", **pad)
         self.model_var = ctk.StringVar(value=self.cfg["model"])
         ctk.CTkOptionMenu(
             self,
@@ -46,39 +49,45 @@ class SettingsDialog(ctk.CTkToplevel):
             values=self.cfg.get("available_models", [self.cfg["model"]]),
         ).pack(fill="x", **pad)
 
-        ctk.CTkLabel(self, text="Temperature", anchor="w").pack(fill="x", **pad)
+        ctk.CTkLabel(self, text=self.tr("settings_temperature"), anchor="w").pack(fill="x", **pad)
         self.temp_var = ctk.DoubleVar(value=self.cfg["temperature"])
         ctk.CTkSlider(self, from_=0, to=2, variable=self.temp_var, number_of_steps=20).pack(fill="x", **pad)
 
-        ctk.CTkLabel(self, text="System Prompt", anchor="w").pack(fill="x", **pad)
+        ctk.CTkLabel(self, text=self.tr("settings_system_prompt"), anchor="w").pack(fill="x", **pad)
         self.prompt_box = ctk.CTkTextbox(self, height=140)
         self.prompt_box.pack(fill="x", **pad)
         self.prompt_box.insert("end", self.cfg.get("system_prompt", ""))
 
-        ctk.CTkLabel(self, text="Theme", anchor="w").pack(fill="x", **pad)
+        ctk.CTkLabel(self, text=self.tr("settings_theme"), anchor="w").pack(fill="x", **pad)
         self.theme_var = ctk.StringVar(value=self.cfg["theme"])
         ctk.CTkOptionMenu(self, variable=self.theme_var, values=["dark", "light", "system"]).pack(fill="x", **pad)
 
+        ctk.CTkLabel(self, text=self.tr("settings_language"), anchor="w").pack(fill="x", **pad)
+        self.language_var = ctk.StringVar(value=self.cfg.get("language", "vi"))
+        ctk.CTkOptionMenu(self, variable=self.language_var, values=LANGUAGES).pack(fill="x", **pad)
+
         # Nút lưu
-        ctk.CTkButton(self, text="💾  Lưu cài đặt", command=self._save).pack(pady=16)
+        ctk.CTkButton(self, text=self.tr("settings_save"), command=self._save).pack(pady=16)
 
     def _save(self):
         self.cfg["model"]         = self.model_var.get()
         self.cfg["temperature"]   = round(self.temp_var.get(), 2)
         self.cfg["system_prompt"] = self.prompt_box.get("1.0", "end").strip()
         self.cfg["theme"]         = self.theme_var.get()
+        self.cfg["language"]      = self.language_var.get()
         self.on_save(self.cfg)
         ctk.set_appearance_mode(self.cfg["theme"])
         self.destroy()
 
 
 class Sidebar(ctk.CTkFrame):
-    def __init__(self, parent, on_select, on_new, on_delete, on_search):
+    def __init__(self, parent, on_select, on_new, on_delete, on_search, tr):
         super().__init__(parent, width=SIDEBAR_W, corner_radius=0)
         self.on_select = on_select
         self.on_new    = on_new
         self.on_delete = on_delete
         self.on_search = on_search
+        self.tr = tr
         self._buttons: dict[str, ctk.CTkButton] = {}
         self._active_id: str | None = None
         self._build()
@@ -90,12 +99,12 @@ class Sidebar(ctk.CTkFrame):
         header.pack(fill="x", padx=12, pady=(12, 6))
         ctk.CTkLabel(
             header,
-            text="Conversations",
+            text=self.tr("sidebar_conversations"),
             font=ctk.CTkFont(size=16, weight="bold"),
         ).pack(side="left")
         ctk.CTkButton(
             header,
-            text="New",
+            text=self.tr("sidebar_new"),
             width=64,
             height=28,
             command=self.on_new,
@@ -105,7 +114,7 @@ class Sidebar(ctk.CTkFrame):
         self.search_entry = ctk.CTkEntry(
             self,
             textvariable=self.search_var,
-            placeholder_text="Search conversations",
+            placeholder_text=self.tr("sidebar_search_placeholder"),
             height=30,
         )
         self.search_entry.pack(fill="x", padx=12, pady=(0, 6))
@@ -127,7 +136,7 @@ class Sidebar(ctk.CTkFrame):
             cid   = conv["id"]
             title = conv["title"]
             count = conv["message_count"]
-            label = f"{title}\n{count} tin nhắn"
+            label = f"{title}\n{self.tr('sidebar_message_count', count=count)}"
 
             row = ctk.CTkFrame(self.list_frame, fg_color="transparent")
             row.pack(fill="x", pady=2)
@@ -160,9 +169,10 @@ class ChatArea(ctk.CTkFrame):
     BUBBLE_AI = ("#eef1f4", "#252d37")
     THINKING_CLR = ("gray60", "gray50")
 
-    def __init__(self, parent, on_send):
+    def __init__(self, parent, on_send, tr):
         super().__init__(parent, corner_radius=0, fg_color="transparent")
         self.on_send = on_send
+        self.tr = tr
         self._build()
         self._thinking_id: str | None = None
 
@@ -174,10 +184,10 @@ class ChatArea(ctk.CTkFrame):
         quick_row = ctk.CTkFrame(self, fg_color="transparent")
         quick_row.pack(fill="x", padx=12, pady=(0, 6))
         presets = [
-            "Tom tat nhanh noi dung nay",
-            "Lap ke hoach hanh dong 5 buoc",
-            "Giai thich de hieu nhu cho nguoi moi",
-            "Dich sang Tieng Anh chuyen nghiep",
+            self.tr("quick_prompt_summary"),
+            self.tr("quick_prompt_plan"),
+            self.tr("quick_prompt_explain"),
+            self.tr("quick_prompt_translate"),
         ]
         for preset in presets:
             ctk.CTkButton(
@@ -198,7 +208,7 @@ class ChatArea(ctk.CTkFrame):
         self.input_box.bind("<Shift-Return>", lambda e: None)
 
         self.send_btn = ctk.CTkButton(
-            input_row, text="Gửi ▶", width=80, height=72,
+            input_row, text=self.tr("chat_send"), width=80, height=72,
             corner_radius=10, command=self._submit,
         )
         self.send_btn.pack(side="right")
@@ -247,7 +257,7 @@ class ChatArea(ctk.CTkFrame):
 
     def show_thinking(self):
         """Hiển thị '...' khi đang chờ AI trả lời."""
-        self._thinking_lbl = self.add_message("assistant", "⏳ Đang suy nghĩ…")
+        self._thinking_lbl = self.add_message("assistant", self.tr("chat_thinking"))
 
     def hide_thinking(self):
         if hasattr(self, "_thinking_lbl"):
@@ -285,12 +295,15 @@ class ChatArea(ctk.CTkFrame):
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title(APP_TITLE)
+        self.cfg      = cfg_module.load()
+        self.i18n     = i18n.Translator(self.cfg.get("language", "vi"))
+
+        self.title(self.tr("app_title"))
         self.geometry(f"{APP_W}x{APP_H}")
         self.minsize(800, 500)
 
-        self.cfg      = cfg_module.load()
         self.conv     = history.new_conversation()
+        self.conv["title"] = self.tr("conversation_new")
         self._is_busy = False
         self._conversation_query = ""
 
@@ -298,6 +311,9 @@ class App(ctk.CTk):
         self._refresh_sidebar()
         self._update_meta()
         self._bind_shortcuts()
+
+    def tr(self, key: str, **kwargs) -> str:
+        return self.i18n.t(key, **kwargs)
 
     # ─── Layout ──────────────────────────────────────────────────────────────
     def _build_layout(self):
@@ -311,6 +327,7 @@ class App(ctk.CTk):
             on_new=self._new_conversation,
             on_delete=self._delete_conversation,
             on_search=self._on_sidebar_search,
+            tr=self.tr,
         )
         self.sidebar.grid(row=0, column=0, sticky="nsew")
 
@@ -328,17 +345,17 @@ class App(ctk.CTk):
         title_wrap = ctk.CTkFrame(topbar, fg_color="transparent")
         title_wrap.pack(side="left", padx=16)
 
-        self.title_lbl = ctk.CTkLabel(title_wrap, text=APP_TITLE, font=ctk.CTkFont(size=18, weight="bold"))
+        self.title_lbl = ctk.CTkLabel(title_wrap, text=self.tr("app_title"), font=ctk.CTkFont(size=18, weight="bold"))
         self.title_lbl.pack(anchor="w")
         ctk.CTkLabel(
             title_wrap,
-            text=APP_SUBTITLE,
+            text=self.tr("app_subtitle"),
             font=ctk.CTkFont(size=12),
             text_color=("gray35", "gray65"),
         ).pack(anchor="w")
         self.meta_lbl = ctk.CTkLabel(
             title_wrap,
-            text="0 messages",
+            text=self.tr("meta_messages", count=0),
             font=ctk.CTkFont(size=11),
             text_color=("gray40", "gray60"),
         )
@@ -346,7 +363,7 @@ class App(ctk.CTk):
 
         ctk.CTkButton(
             topbar,
-            text="Export",
+            text=self.tr("top_export"),
             width=78,
             height=30,
             command=self._export_current_conversation,
@@ -354,7 +371,7 @@ class App(ctk.CTk):
 
         ctk.CTkButton(
             topbar,
-            text="Clear",
+            text=self.tr("top_clear"),
             width=70,
             height=30,
             command=self._clear_current_messages,
@@ -362,7 +379,7 @@ class App(ctk.CTk):
 
         self.status_lbl = ctk.CTkLabel(
             topbar,
-            text="Ready",
+            text=self.tr("status_ready"),
             fg_color=("#d9f7e8", "#1e3b2f"),
             text_color=("#115a35", "#93f0c3"),
             corner_radius=8,
@@ -373,12 +390,12 @@ class App(ctk.CTk):
         self.status_lbl.pack(side="right", padx=(0, 10))
 
         ctk.CTkButton(
-            topbar, text="⚙️  Cài đặt", width=110, height=30,
+            topbar, text=self.tr("top_settings"), width=110, height=30,
             command=self._open_settings,
         ).pack(side="right", padx=(0, 10))
 
         # Chat area
-        self.chat = ChatArea(right, on_send=self._on_user_send)
+        self.chat = ChatArea(right, on_send=self._on_user_send, tr=self.tr)
         self.chat.grid(row=1, column=0, sticky="nsew")
 
     def _set_status(self, text: str, kind: str = "ready"):
@@ -416,9 +433,10 @@ class App(ctk.CTk):
 
     def _new_conversation(self):
         self.conv = history.new_conversation()
+        self.conv["title"] = self.tr("conversation_new")
         self.chat.clear()
-        self.title_lbl.configure(text=APP_TITLE)
-        self._set_status("Ready", "ready")
+        self.title_lbl.configure(text=self.tr("app_title"))
+        self._set_status(self.tr("status_ready"), "ready")
         self._update_meta()
         self._refresh_sidebar()
 
@@ -427,12 +445,12 @@ class App(ctk.CTk):
         self.chat.clear()
         for msg in self.conv.get("messages", []):
             self.chat.add_message(msg["role"], msg["text"])
-        self.title_lbl.configure(text=self.conv.get("title", APP_TITLE))
+        self.title_lbl.configure(text=self.conv.get("title", self.tr("app_title")))
         self._update_meta()
         self._refresh_sidebar()
 
     def _delete_conversation(self, conv_id: str):
-        if not msgbox.askyesno("Xác nhận", "Xoá hội thoại này?"):
+        if not msgbox.askyesno(self.tr("dialog_confirm_title"), self.tr("dialog_delete_conversation")):
             return
         history.delete_conversation(conv_id)
         if self.conv.get("id") == conv_id:
@@ -447,7 +465,7 @@ class App(ctk.CTk):
 
         self._is_busy = True
         self.chat.set_input_enabled(False)
-        self._set_status("Generating...", "busy")
+        self._set_status(self.tr("status_generating"), "busy")
 
         # Hiển thị tin nhắn người dùng
         self.chat.add_message("user", text)
@@ -482,57 +500,59 @@ class App(ctk.CTk):
 
     def _on_error(self, err: str):
         def _show():
-            self.chat.append_stream(f"\n❌ Lỗi: {err}")
-            self._set_status("Error", "error")
+            self.chat.append_stream(f"\n❌ {self.tr('chat_error_prefix')}: {err}")
+            self._set_status(self.tr("status_error"), "error")
             self._after_response()
         self.after(0, _show)
 
     def _after_response(self):
         self._is_busy = False
         self.chat.set_input_enabled(True)
-        if self.status_lbl.cget("text") != "Error":
-            self._set_status("Ready", "ready")
+        if self.status_lbl.cget("text") != self.tr("status_error"):
+            self._set_status(self.tr("status_ready"), "ready")
         self._refresh_sidebar()
 
     def _update_meta(self):
         msg_count = len(self.conv.get("messages", []))
         updated_at = self.conv.get("updated_at") or self.conv.get("created_at") or ""
         if updated_at:
-            self.meta_lbl.configure(text=f"{msg_count} messages • updated {updated_at[:16].replace('T', ' ')}")
+            self.meta_lbl.configure(
+                text=self.tr("meta_messages_updated", count=msg_count, updated=updated_at[:16].replace("T", " "))
+            )
         else:
-            self.meta_lbl.configure(text=f"{msg_count} messages")
+            self.meta_lbl.configure(text=self.tr("meta_messages", count=msg_count))
 
     def _clear_current_messages(self):
         if not self.conv.get("messages"):
-            msgbox.showinfo("Thông báo", "Hội thoại hiện tại đang trống")
+            msgbox.showinfo(self.tr("dialog_notice_title"), self.tr("dialog_conversation_empty"))
             return
-        if not msgbox.askyesno("Xác nhận", "Xoá toàn bộ tin nhắn trong hội thoại hiện tại?"):
+        if not msgbox.askyesno(self.tr("dialog_confirm_title"), self.tr("dialog_clear_conversation")):
             return
 
         self.conv["messages"] = []
-        self.conv["title"] = "Hội thoại mới"
+        self.conv["title"] = self.tr("conversation_new")
         self.chat.clear()
-        self.title_lbl.configure(text=APP_TITLE)
+        self.title_lbl.configure(text=self.tr("app_title"))
         history.save_conversation(self.conv)
         self._update_meta()
         self._refresh_sidebar()
-        self._set_status("Conversation cleared", "ready")
+        self._set_status(self.tr("status_conversation_cleared"), "ready")
 
     def _safe_file_stem(self, value: str) -> str:
         cleaned = "".join(ch if ch.isalnum() or ch in {"-", "_", " "} else "_" for ch in value)
         cleaned = " ".join(cleaned.split()).strip()
-        return cleaned or "conversation"
+        return cleaned or self.tr("conversation_file_name")
 
     def _export_current_conversation(self):
         messages = self.conv.get("messages", [])
         if not messages:
-            msgbox.showinfo("Thông báo", "Không có nội dung để export")
+            msgbox.showinfo(self.tr("dialog_notice_title"), self.tr("dialog_no_content_to_export"))
             return
 
-        title = self.conv.get("title", "conversation")
+        title = self.conv.get("title", self.tr("conversation_file_name"))
         default_name = f"{self._safe_file_stem(title)}.md"
         file_path = filedialog.asksaveasfilename(
-            title="Export Conversation",
+            title=self.tr("export_dialog_title"),
             defaultextension=".md",
             initialfile=default_name,
             filetypes=[("Markdown", "*.md"), ("Text", "*.txt"), ("All files", "*.*")],
@@ -540,17 +560,22 @@ class App(ctk.CTk):
         if not file_path:
             return
 
-        lines = [f"# {title}", "", f"Conversation ID: {self.conv.get('id', '-')}", ""]
+        lines = [
+            f"# {title}",
+            "",
+            f"{self.tr('export_conversation_id')}: {self.conv.get('id', '-')}",
+            "",
+        ]
         for item in messages:
-            role = "User" if item.get("role") == "user" else "Assistant"
+            role = self.tr("export_role_user") if item.get("role") == "user" else self.tr("export_role_assistant")
             lines.append(f"## {role}")
             lines.append(item.get("text", ""))
             lines.append("")
 
         output = "\n".join(lines).strip() + "\n"
         Path(file_path).write_text(output, encoding="utf-8")
-        self._set_status("Conversation exported", "ready")
-        msgbox.showinfo("Export", f"Đã lưu hội thoại: {file_path}")
+        self._set_status(self.tr("status_conversation_exported"), "ready")
+        msgbox.showinfo(self.tr("export_done_title"), self.tr("export_done_message", path=file_path))
 
     def _bind_shortcuts(self):
         self.bind("<Control-n>", self._shortcut_new_conversation)
@@ -572,12 +597,17 @@ class App(ctk.CTk):
     # ─── Settings ────────────────────────────────────────────────────────────
     def _open_settings(self):
         def _save(new_cfg):
+            previous_lang = self.cfg.get("language", "vi")
             self.cfg = new_cfg
             cfg_module.save(new_cfg)
             gemini.reset_client()   # reset client khi model/key thay đổi
-            self._set_status(f"Model: {self.cfg['model']}", "ready")
+            self.i18n.set_language(self.cfg.get("language", "vi"))
+            self._set_status(self.tr("status_model", model=self.cfg["model"]), "ready")
 
-        SettingsDialog(self, self.cfg, on_save=_save)
+            if previous_lang != self.cfg.get("language", "vi"):
+                msgbox.showinfo(self.tr("settings_dialog_title"), self.tr("settings_restart_required"))
+
+        SettingsDialog(self, self.cfg, on_save=_save, tr=self.tr)
 
 
 # ─── Entry point ─────────────────────────────────────────────────────────────

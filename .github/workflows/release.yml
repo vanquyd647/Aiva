@@ -5,6 +5,9 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: write
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -44,3 +47,40 @@ jobs:
         with:
           files: ai-assist-${{ github.ref_name }}.zip
           generate_release_notes: true
+
+  windows_desktop:
+    needs: release
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Build desktop executables
+        shell: pwsh
+        run: ./scripts/build_desktop.ps1 -SkipInstallerInstall
+
+      - name: Upload desktop artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-executables-${{ github.ref_name }}
+          path: |
+            dist/desktop/AIAssistUser.exe
+            dist/desktop/AIAssistAdmin.exe
+
+      - name: Attach desktop assets to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/desktop/AIAssistUser.exe
+            dist/desktop/AIAssistAdmin.exe

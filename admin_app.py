@@ -13,6 +13,9 @@ import tkinter.messagebox as msgbox
 import customtkinter as ctk
 import requests
 
+import core.config as cfg_module
+import core.i18n as i18n
+
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("green")
 
@@ -146,7 +149,10 @@ class ApiClient:
 class AdminApp(ctk.CTk):
     def __init__(self) -> None:
         super().__init__()
-        self.title("AI Assist Admin Console")
+        self.cfg = cfg_module.load()
+        self.i18n = i18n.Translator(self.cfg.get("language", "vi"))
+
+        self.title(self.tr("admin_title"))
         self.geometry("1320x820")
         self.minsize(1080, 680)
 
@@ -162,8 +168,11 @@ class AdminApp(ctk.CTk):
 
         self._build_ui()
         self._set_logged_in(False)
-        self._set_feedback("Sign in to manage users.", "info")
+        self._set_feedback(self.tr("admin_noop_when_logged_out"), "info")
         self._bind_shortcuts()
+
+    def tr(self, key: str, **kwargs) -> str:
+        return self.i18n.t(key, **kwargs)
 
     def _build_ui(self) -> None:
         self.grid_columnconfigure(0, weight=1)
@@ -177,12 +186,12 @@ class AdminApp(ctk.CTk):
         title_wrap.grid(row=0, column=0, sticky="w", padx=12, pady=(10, 4))
         ctk.CTkLabel(
             title_wrap,
-            text="AI Assist Admin Console",
+            text=self.tr("admin_header_title"),
             font=ctk.CTkFont(size=22, weight="bold"),
         ).pack(anchor="w")
         ctk.CTkLabel(
             title_wrap,
-            text="User lifecycle, permissions, security and health overview",
+            text=self.tr("admin_header_subtitle"),
             text_color=("gray30", "gray70"),
             font=ctk.CTkFont(size=12),
         ).pack(anchor="w")
@@ -194,31 +203,31 @@ class AdminApp(ctk.CTk):
         self.email_var = ctk.StringVar(value="admin@aiassist.app")
         self.password_var = ctk.StringVar(value="")
 
-        ctk.CTkLabel(auth, text="Backend URL").pack(side="left", padx=(0, 6))
+        ctk.CTkLabel(auth, text=self.tr("admin_backend_url")).pack(side="left", padx=(0, 6))
         self.backend_entry = ctk.CTkEntry(auth, textvariable=self.backend_url_var, width=220)
         self.backend_entry.pack(side="left", padx=(0, 10))
 
-        ctk.CTkLabel(auth, text="Admin Email").pack(side="left", padx=(0, 6))
+        ctk.CTkLabel(auth, text=self.tr("admin_email")).pack(side="left", padx=(0, 6))
         self.email_entry = ctk.CTkEntry(auth, textvariable=self.email_var, width=220)
         self.email_entry.pack(side="left", padx=(0, 10))
 
-        ctk.CTkLabel(auth, text="Password").pack(side="left", padx=(0, 6))
+        ctk.CTkLabel(auth, text=self.tr("admin_password")).pack(side="left", padx=(0, 6))
         self.password_entry = ctk.CTkEntry(auth, textvariable=self.password_var, width=180, show="*")
         self.password_entry.pack(side="left", padx=(0, 10))
         self.password_entry.bind("<Return>", lambda _: self._login())
 
-        self.login_btn = ctk.CTkButton(auth, text="Sign In", width=100, command=self._login)
+        self.login_btn = ctk.CTkButton(auth, text=self.tr("admin_sign_in"), width=100, command=self._login)
         self.login_btn.pack(side="left", padx=(0, 10))
 
-        self.logout_btn = ctk.CTkButton(auth, text="Logout", width=90, command=self._logout)
+        self.logout_btn = ctk.CTkButton(auth, text=self.tr("admin_logout"), width=90, command=self._logout)
         self.logout_btn.pack(side="left", padx=(0, 8))
 
-        self.export_btn = ctk.CTkButton(auth, text="Export CSV", width=110, command=self._export_users_csv)
+        self.export_btn = ctk.CTkButton(auth, text=self.tr("admin_export_csv"), width=110, command=self._export_users_csv)
         self.export_btn.pack(side="left", padx=(0, 10))
 
         self.auth_status_lbl = ctk.CTkLabel(
             auth,
-            text="Not authenticated",
+            text=self.tr("admin_not_authenticated"),
             fg_color=("#fff1d6", "#4a3520"),
             text_color=("#8a5a00", "#ffd18c"),
             corner_radius=8,
@@ -229,7 +238,7 @@ class AdminApp(ctk.CTk):
 
         self.health_status_lbl = ctk.CTkLabel(
             auth,
-            text="Backend unknown",
+            text=self.tr("admin_backend_unknown"),
             fg_color=("#ececec", "#2f2f2f"),
             text_color=("#444444", "#d8d8d8"),
             corner_radius=8,
@@ -255,10 +264,10 @@ class AdminApp(ctk.CTk):
             stat_row.grid_columnconfigure(col, weight=1)
 
         self.stat_values: dict[str, ctk.CTkLabel] = {}
-        self._build_stat_card(stat_row, 0, "Total users", "total")
-        self._build_stat_card(stat_row, 1, "Active", "active")
-        self._build_stat_card(stat_row, 2, "Inactive", "inactive")
-        self._build_stat_card(stat_row, 3, "Admins", "admins")
+        self._build_stat_card(stat_row, 0, self.tr("admin_stat_total"), "total")
+        self._build_stat_card(stat_row, 1, self.tr("admin_stat_active"), "active")
+        self._build_stat_card(stat_row, 2, self.tr("admin_stat_inactive"), "inactive")
+        self._build_stat_card(stat_row, 3, self.tr("admin_stat_admins"), "admins")
 
         toolbar = ctk.CTkFrame(left, fg_color="transparent")
         toolbar.grid(row=1, column=0, sticky="ew", padx=10, pady=(2, 6))
@@ -268,14 +277,14 @@ class AdminApp(ctk.CTk):
             toolbar,
             textvariable=self.search_var,
             width=280,
-            placeholder_text="Search by email or full name",
+            placeholder_text=self.tr("admin_search_placeholder"),
         )
         self.search_entry.pack(side="left", padx=(0, 6))
         self.search_entry.bind("<Return>", lambda _: self._refresh_dashboard(reset_page=True))
 
         self.search_btn = ctk.CTkButton(
             toolbar,
-            text="Search",
+            text=self.tr("admin_search"),
             width=80,
             command=lambda: self._refresh_dashboard(reset_page=True),
         )
@@ -283,13 +292,13 @@ class AdminApp(ctk.CTk):
 
         self.refresh_btn = ctk.CTkButton(
             toolbar,
-            text="Refresh",
+            text=self.tr("admin_refresh"),
             width=80,
             command=lambda: self._refresh_dashboard(reset_page=False),
         )
         self.refresh_btn.pack(side="left", padx=(0, 10))
 
-        ctk.CTkLabel(toolbar, text="Page size").pack(side="left", padx=(0, 4))
+        ctk.CTkLabel(toolbar, text=self.tr("admin_page_size")).pack(side="left", padx=(0, 4))
         self.page_size_var = ctk.StringVar(value="15")
         self.page_size_menu = ctk.CTkOptionMenu(
             toolbar,
@@ -300,17 +309,17 @@ class AdminApp(ctk.CTk):
         )
         self.page_size_menu.pack(side="left", padx=(0, 10))
 
-        self.prev_btn = ctk.CTkButton(toolbar, text="Prev", width=70, command=self._prev_page)
+        self.prev_btn = ctk.CTkButton(toolbar, text=self.tr("admin_prev"), width=70, command=self._prev_page)
         self.prev_btn.pack(side="right", padx=(6, 0))
-        self.next_btn = ctk.CTkButton(toolbar, text="Next", width=70, command=self._next_page)
+        self.next_btn = ctk.CTkButton(toolbar, text=self.tr("admin_next"), width=70, command=self._next_page)
         self.next_btn.pack(side="right")
 
-        self.page_lbl = ctk.CTkLabel(left, text="Page 1")
+        self.page_lbl = ctk.CTkLabel(left, text=self.tr("admin_page", page=1, total_pages=1, total=0, page_size=self.page_size))
         self.page_lbl.grid(row=3, column=0, sticky="w", padx=12, pady=(0, 8))
 
         self.user_box = ctk.CTkTextbox(left, wrap="none", corner_radius=10)
         self.user_box.grid(row=2, column=0, sticky="nsew", padx=10, pady=(0, 6))
-        self.user_box.insert("1.0", "Sign in to load users.\n")
+        self.user_box.insert("1.0", self.tr("admin_noop_when_logged_out") + "\n")
         self.user_box.configure(state="disabled")
         self.user_box.bind("<ButtonRelease-1>", self._on_user_click)
 
@@ -322,10 +331,10 @@ class AdminApp(ctk.CTk):
         tabs = ctk.CTkTabview(right)
         tabs.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
 
-        create_tab = tabs.add("Create")
-        update_tab = tabs.add("Update")
-        security_tab = tabs.add("Security")
-        actions_tab = tabs.add("Actions")
+        create_tab = tabs.add(self.tr("admin_tab_create"))
+        update_tab = tabs.add(self.tr("admin_tab_update"))
+        security_tab = tabs.add(self.tr("admin_tab_security"))
+        actions_tab = tabs.add(self.tr("admin_tab_actions"))
 
         for tab in (create_tab, update_tab, security_tab, actions_tab):
             tab.grid_columnconfigure(0, weight=1)
@@ -340,7 +349,7 @@ class AdminApp(ctk.CTk):
 
         self.feedback_lbl = ctk.CTkLabel(
             bottom,
-            text="Ready",
+            text=self.tr("admin_feedback_ready"),
             anchor="w",
             padx=12,
             pady=8,
@@ -403,7 +412,7 @@ class AdminApp(ctk.CTk):
         self.create_role_var = ctk.StringVar(value="user")
         self.create_active_var = tk.BooleanVar(value=True)
 
-        ctk.CTkLabel(parent, text="Create New User", font=ctk.CTkFont(size=16, weight="bold")).grid(
+        ctk.CTkLabel(parent, text=self.tr("admin_create_title"), font=ctk.CTkFont(size=16, weight="bold")).grid(
             row=0,
             column=0,
             sticky="w",
@@ -411,32 +420,32 @@ class AdminApp(ctk.CTk):
             pady=(12, 10),
         )
 
-        ctk.CTkLabel(parent, text="Email").grid(row=1, column=0, sticky="w", padx=12)
+        ctk.CTkLabel(parent, text=self.tr("admin_field_email")).grid(row=1, column=0, sticky="w", padx=12)
         self.create_email_entry = ctk.CTkEntry(parent, textvariable=self.create_email_var)
         self.create_email_entry.grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 8))
 
-        ctk.CTkLabel(parent, text="Full name").grid(row=3, column=0, sticky="w", padx=12)
+        ctk.CTkLabel(parent, text=self.tr("admin_field_full_name")).grid(row=3, column=0, sticky="w", padx=12)
         self.create_name_entry = ctk.CTkEntry(parent, textvariable=self.create_name_var)
         self.create_name_entry.grid(row=4, column=0, sticky="ew", padx=12, pady=(0, 8))
 
-        ctk.CTkLabel(parent, text="Password").grid(row=5, column=0, sticky="w", padx=12)
+        ctk.CTkLabel(parent, text=self.tr("admin_field_password")).grid(row=5, column=0, sticky="w", padx=12)
         self.create_password_entry = ctk.CTkEntry(parent, textvariable=self.create_password_var, show="*")
         self.create_password_entry.grid(row=6, column=0, sticky="ew", padx=12, pady=(0, 8))
 
-        ctk.CTkLabel(parent, text="Role").grid(row=7, column=0, sticky="w", padx=12)
+        ctk.CTkLabel(parent, text=self.tr("admin_field_role")).grid(row=7, column=0, sticky="w", padx=12)
         self.create_role_menu = ctk.CTkOptionMenu(parent, variable=self.create_role_var, values=["user", "admin"])
         self.create_role_menu.grid(row=8, column=0, sticky="ew", padx=12, pady=(0, 8))
 
         self.create_active_switch = ctk.CTkSwitch(
             parent,
-            text="Active account",
+            text=self.tr("admin_field_active_account"),
             variable=self.create_active_var,
             onvalue=True,
             offvalue=False,
         )
         self.create_active_switch.grid(row=9, column=0, sticky="w", padx=12, pady=(2, 12))
 
-        self.create_btn = ctk.CTkButton(parent, text="Create User", command=self._create_user)
+        self.create_btn = ctk.CTkButton(parent, text=self.tr("admin_create_button"), command=self._create_user)
         self.create_btn.grid(row=10, column=0, sticky="ew", padx=12, pady=(0, 12))
 
     def _build_update_tab(self, parent: ctk.CTkFrame) -> None:
@@ -446,7 +455,7 @@ class AdminApp(ctk.CTk):
         self.update_role_var = ctk.StringVar(value="user")
         self.update_active_var = tk.BooleanVar(value=True)
 
-        ctk.CTkLabel(parent, text="Update User Profile", font=ctk.CTkFont(size=16, weight="bold")).grid(
+        ctk.CTkLabel(parent, text=self.tr("admin_update_title"), font=ctk.CTkFont(size=16, weight="bold")).grid(
             row=0,
             column=0,
             sticky="w",
@@ -454,39 +463,43 @@ class AdminApp(ctk.CTk):
             pady=(12, 10),
         )
 
-        ctk.CTkLabel(parent, text="User ID").grid(row=1, column=0, sticky="w", padx=12)
-        self.update_id_entry = ctk.CTkEntry(parent, textvariable=self.update_id_var, placeholder_text="e.g. 12")
+        ctk.CTkLabel(parent, text=self.tr("admin_field_user_id")).grid(row=1, column=0, sticky="w", padx=12)
+        self.update_id_entry = ctk.CTkEntry(
+            parent,
+            textvariable=self.update_id_var,
+            placeholder_text=self.tr("admin_placeholder_user_id"),
+        )
         self.update_id_entry.grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 8))
 
-        ctk.CTkLabel(parent, text="Email").grid(row=3, column=0, sticky="w", padx=12)
+        ctk.CTkLabel(parent, text=self.tr("admin_field_email")).grid(row=3, column=0, sticky="w", padx=12)
         self.update_email_entry = ctk.CTkEntry(parent, textvariable=self.update_email_var)
         self.update_email_entry.grid(row=4, column=0, sticky="ew", padx=12, pady=(0, 8))
 
-        ctk.CTkLabel(parent, text="Full name").grid(row=5, column=0, sticky="w", padx=12)
+        ctk.CTkLabel(parent, text=self.tr("admin_field_full_name")).grid(row=5, column=0, sticky="w", padx=12)
         self.update_name_entry = ctk.CTkEntry(parent, textvariable=self.update_name_var)
         self.update_name_entry.grid(row=6, column=0, sticky="ew", padx=12, pady=(0, 8))
 
-        ctk.CTkLabel(parent, text="Role").grid(row=7, column=0, sticky="w", padx=12)
+        ctk.CTkLabel(parent, text=self.tr("admin_field_role")).grid(row=7, column=0, sticky="w", padx=12)
         self.update_role_menu = ctk.CTkOptionMenu(parent, variable=self.update_role_var, values=["user", "admin"])
         self.update_role_menu.grid(row=8, column=0, sticky="ew", padx=12, pady=(0, 8))
 
         self.update_active_switch = ctk.CTkSwitch(
             parent,
-            text="Active account",
+            text=self.tr("admin_field_active_account"),
             variable=self.update_active_var,
             onvalue=True,
             offvalue=False,
         )
         self.update_active_switch.grid(row=9, column=0, sticky="w", padx=12, pady=(2, 12))
 
-        self.update_btn = ctk.CTkButton(parent, text="Save Changes", command=self._update_user)
+        self.update_btn = ctk.CTkButton(parent, text=self.tr("admin_update_button"), command=self._update_user)
         self.update_btn.grid(row=10, column=0, sticky="ew", padx=12, pady=(0, 12))
 
     def _build_security_tab(self, parent: ctk.CTkFrame) -> None:
         self.reset_id_var = ctk.StringVar()
         self.reset_password_var = ctk.StringVar()
 
-        ctk.CTkLabel(parent, text="Reset User Password", font=ctk.CTkFont(size=16, weight="bold")).grid(
+        ctk.CTkLabel(parent, text=self.tr("admin_reset_title"), font=ctk.CTkFont(size=16, weight="bold")).grid(
             row=0,
             column=0,
             sticky="w",
@@ -494,21 +507,21 @@ class AdminApp(ctk.CTk):
             pady=(12, 10),
         )
 
-        ctk.CTkLabel(parent, text="User ID").grid(row=1, column=0, sticky="w", padx=12)
+        ctk.CTkLabel(parent, text=self.tr("admin_field_user_id")).grid(row=1, column=0, sticky="w", padx=12)
         self.reset_id_entry = ctk.CTkEntry(parent, textvariable=self.reset_id_var)
         self.reset_id_entry.grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 8))
 
-        ctk.CTkLabel(parent, text="New password").grid(row=3, column=0, sticky="w", padx=12)
+        ctk.CTkLabel(parent, text=self.tr("admin_field_new_password")).grid(row=3, column=0, sticky="w", padx=12)
         self.reset_password_entry = ctk.CTkEntry(parent, textvariable=self.reset_password_var, show="*")
         self.reset_password_entry.grid(row=4, column=0, sticky="ew", padx=12, pady=(0, 12))
 
-        self.reset_btn = ctk.CTkButton(parent, text="Reset Password", command=self._reset_password)
+        self.reset_btn = ctk.CTkButton(parent, text=self.tr("admin_reset_button"), command=self._reset_password)
         self.reset_btn.grid(row=5, column=0, sticky="ew", padx=12, pady=(0, 12))
 
     def _build_actions_tab(self, parent: ctk.CTkFrame) -> None:
         self.action_id_var = ctk.StringVar()
 
-        ctk.CTkLabel(parent, text="Quick Actions", font=ctk.CTkFont(size=16, weight="bold")).grid(
+        ctk.CTkLabel(parent, text=self.tr("admin_actions_title"), font=ctk.CTkFont(size=16, weight="bold")).grid(
             row=0,
             column=0,
             sticky="w",
@@ -516,19 +529,19 @@ class AdminApp(ctk.CTk):
             pady=(12, 10),
         )
 
-        ctk.CTkLabel(parent, text="User ID").grid(row=1, column=0, sticky="w", padx=12)
+        ctk.CTkLabel(parent, text=self.tr("admin_field_user_id")).grid(row=1, column=0, sticky="w", padx=12)
         self.action_id_entry = ctk.CTkEntry(parent, textvariable=self.action_id_var)
         self.action_id_entry.grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 12))
 
-        self.activate_btn = ctk.CTkButton(parent, text="Activate", command=lambda: self._change_status(True))
+        self.activate_btn = ctk.CTkButton(parent, text=self.tr("admin_activate"), command=lambda: self._change_status(True))
         self.activate_btn.grid(row=3, column=0, sticky="ew", padx=12, pady=(0, 6))
 
-        self.deactivate_btn = ctk.CTkButton(parent, text="Deactivate", command=lambda: self._change_status(False))
+        self.deactivate_btn = ctk.CTkButton(parent, text=self.tr("admin_deactivate"), command=lambda: self._change_status(False))
         self.deactivate_btn.grid(row=4, column=0, sticky="ew", padx=12, pady=(0, 6))
 
         self.delete_btn = ctk.CTkButton(
             parent,
-            text="Delete User",
+            text=self.tr("admin_delete"),
             fg_color="#8B0000",
             hover_color="#A40000",
             command=self._delete_user,
@@ -557,17 +570,17 @@ class AdminApp(ctk.CTk):
             self._render_users({"items": [], "total": 0, "page": 1, "page_size": self.page_size})
             self._render_stats({"total": 0, "active": 0, "inactive": 0, "admins": 0})
             self.auth_status_lbl.configure(
-                text="Not authenticated",
+                text=self.tr("admin_not_authenticated"),
                 fg_color=("#fff1d6", "#4a3520"),
                 text_color=("#8a5a00", "#ffd18c"),
             )
             self.health_status_lbl.configure(
-                text="Backend unknown",
+                text=self.tr("admin_backend_unknown"),
                 fg_color=("#ececec", "#2f2f2f"),
                 text_color=("#444444", "#d8d8d8"),
             )
         self._apply_control_state()
-        self.login_btn.configure(text="Relogin" if logged_in else "Sign In")
+        self.login_btn.configure(text=self.tr("admin_relogin") if logged_in else self.tr("admin_sign_in"))
 
     def _apply_control_state(self) -> None:
         if self._logged_in and not self._busy:
@@ -593,10 +606,16 @@ class AdminApp(ctk.CTk):
         self.prev_btn.configure(state="normal" if self.page > 1 else "disabled")
         self.next_btn.configure(state="normal" if self.page < self._total_pages else "disabled")
 
-    def _run_bg(self, fn, on_success=None, success_message: str | None = None, busy_message: str = "Working...") -> None:
+    def _run_bg(
+        self,
+        fn,
+        on_success=None,
+        success_message: str | None = None,
+        busy_message: str | None = None,
+    ) -> None:
         self._busy = True
         self._apply_control_state()
-        self._set_feedback(busy_message, "busy")
+        self._set_feedback(busy_message or self.tr("admin_feedback_refreshing"), "busy")
 
         def done_success(result) -> None:
             self._busy = False
@@ -610,7 +629,7 @@ class AdminApp(ctk.CTk):
             self._busy = False
             self._apply_control_state()
             self._set_feedback(str(exc), "error")
-            msgbox.showerror("Operation failed", str(exc))
+            msgbox.showerror(self.tr("admin_error_title"), str(exc))
 
         def runner() -> None:
             try:
@@ -637,13 +656,13 @@ class AdminApp(ctk.CTk):
         cache_mode = health_payload.get("cache_mode", "-")
         if status == "ok":
             self.health_status_lbl.configure(
-                text=f"Backend {status} | cache: {cache_mode}",
+                text=self.tr("admin_health_ready", status=status, cache_mode=cache_mode),
                 fg_color=("#d9f7e8", "#1e3b2f"),
                 text_color=("#115a35", "#93f0c3"),
             )
         else:
             self.health_status_lbl.configure(
-                text=f"Backend {status}",
+                text=self.tr("admin_health_bad", status=status),
                 fg_color=("#ffdcdc", "#4f2424"),
                 text_color=("#8a1d1d", "#ff9b9b"),
             )
@@ -667,7 +686,7 @@ class AdminApp(ctk.CTk):
         self.user_box.configure(state="normal")
         self.user_box.delete("1.0", "end")
 
-        header = "ID   EMAIL                             ROLE    ACTIVE   FULL NAME\n"
+        header = self.tr("admin_table_header")
         header += "-" * 92 + "\n"
         self.user_box.insert("1.0", header)
 
@@ -678,20 +697,22 @@ class AdminApp(ctk.CTk):
                 f"{item['id']:<4}"
                 f"{item['email'][:32]:<34}"
                 f"{item['role']:<8}"
-                f"{('yes' if item['is_active'] else 'no'):<9}"
+                f"{(self.tr('admin_yes') if item['is_active'] else self.tr('admin_no')):<9}"
                 f"{item['full_name']}\n"
             )
             self.user_box.insert("end", line)
 
         if not payload.get("items"):
-            self.user_box.insert("end", "No users matched your current filter.\n")
+            self.user_box.insert("end", self.tr("admin_users_empty") + "\n")
 
         self.user_box.configure(state="disabled")
         self.page_lbl.configure(
-            text=(
-                f"Page {self.page}/{self._total_pages} | "
-                f"Total users: {self._total_users} | "
-                f"Page size: {self.page_size}"
+            text=self.tr(
+                "admin_page",
+                page=self.page,
+                total_pages=self._total_pages,
+                total=self._total_users,
+                page_size=self.page_size,
             )
         )
         self._sync_paging_controls()
@@ -706,7 +727,7 @@ class AdminApp(ctk.CTk):
 
         self.reset_id_var.set(user_id)
         self.action_id_var.set(user_id)
-        self._set_feedback(f"Selected user #{user_id}", "info")
+        self._set_feedback(self.tr("admin_feedback_selected_user", user_id=user_id), "info")
 
     def _on_user_click(self, _: object) -> None:
         line = self.user_box.get("insert linestart", "insert lineend").strip()
@@ -738,18 +759,18 @@ class AdminApp(ctk.CTk):
             return
         self.search_var.set("")
         self._set_logged_in(False)
-        self._set_feedback("Signed out.", "info")
+        self._set_feedback(self.tr("admin_feedback_signed_out"), "info")
 
     def _export_users_csv(self) -> None:
         if not self._logged_in:
-            msgbox.showwarning("Export", "Please sign in first")
+            msgbox.showwarning(self.tr("admin_export_title"), self.tr("admin_export_login_first"))
             return
         if not self._users_by_id:
-            msgbox.showinfo("Export", "No users on current page to export")
+            msgbox.showinfo(self.tr("admin_export_title"), self.tr("admin_export_no_rows"))
             return
 
         file_path = filedialog.asksaveasfilename(
-            title="Export users to CSV",
+            title=self.tr("admin_export_dialog_title"),
             defaultextension=".csv",
             initialfile=f"users_page_{self.page}.csv",
             filetypes=[("CSV", "*.csv"), ("All files", "*.*")],
@@ -764,7 +785,7 @@ class AdminApp(ctk.CTk):
             for user_id in sorted(self._users_by_id):
                 writer.writerow(self._users_by_id[user_id])
 
-        self._set_feedback(f"Exported CSV: {file_path}", "success")
+        self._set_feedback(self.tr("admin_export_done", path=file_path), "success")
 
     def _login(self) -> None:
         url = self.backend_url_var.get().strip()
@@ -772,10 +793,10 @@ class AdminApp(ctk.CTk):
         password = self.password_var.get()
 
         if not url or not email or not password:
-            msgbox.showwarning("Validation", "Backend URL, email and password are required")
+            msgbox.showwarning(self.tr("admin_warning_title"), self.tr("admin_validation_login_required"))
             return
         if not self._validate_email(email):
-            msgbox.showwarning("Validation", "Please provide a valid admin email")
+            msgbox.showwarning(self.tr("admin_warning_title"), self.tr("admin_validation_invalid_admin_email"))
             return
 
         def job():
@@ -794,7 +815,7 @@ class AdminApp(ctk.CTk):
         def success(payload: dict) -> None:
             admin_email = payload["auth"]["user"]["email"]
             self.auth_status_lbl.configure(
-                text=f"Authenticated: {admin_email}",
+                text=self.tr("admin_authenticated_as", email=admin_email),
                 fg_color=("#d9f7e8", "#1e3b2f"),
                 text_color=("#115a35", "#93f0c3"),
             )
@@ -808,8 +829,8 @@ class AdminApp(ctk.CTk):
         self._run_bg(
             fn=job,
             on_success=success,
-            success_message="Authentication successful.",
-            busy_message="Signing in and loading dashboard...",
+            success_message=self.tr("admin_feedback_signed_in"),
+            busy_message=self.tr("admin_feedback_signing_in"),
         )
 
     def _refresh_dashboard(self, reset_page: bool) -> None:
@@ -838,20 +859,20 @@ class AdminApp(ctk.CTk):
         self._run_bg(
             fn=job,
             on_success=success,
-            success_message="Dashboard updated.",
-            busy_message="Refreshing data...",
+            success_message=self.tr("admin_feedback_dashboard_updated"),
+            busy_message=self.tr("admin_feedback_refreshing"),
         )
 
     def _next_page(self) -> None:
         if self.page >= self._total_pages:
-            self._set_feedback("You are already on the last page.", "info")
+            self._set_feedback(self.tr("admin_feedback_last_page"), "info")
             return
         self.page += 1
         self._refresh_dashboard(reset_page=False)
 
     def _prev_page(self) -> None:
         if self.page <= 1:
-            self._set_feedback("You are already on the first page.", "info")
+            self._set_feedback(self.tr("admin_feedback_first_page"), "info")
             return
         self.page = max(1, self.page - 1)
         self._refresh_dashboard(reset_page=False)
@@ -862,13 +883,13 @@ class AdminApp(ctk.CTk):
         password = self.create_password_var.get()
 
         if not email or not full_name or not password:
-            msgbox.showwarning("Validation", "Email, full name and password are required")
+            msgbox.showwarning(self.tr("admin_warning_title"), self.tr("admin_validation_email_name_password_required"))
             return
         if not self._validate_email(email):
-            msgbox.showwarning("Validation", "Please provide a valid email address")
+            msgbox.showwarning(self.tr("admin_warning_title"), self.tr("admin_validation_invalid_email"))
             return
         if len(password) < 8:
-            msgbox.showwarning("Validation", "Password must have at least 8 characters")
+            msgbox.showwarning(self.tr("admin_warning_title"), self.tr("admin_validation_password_length"))
             return
 
         payload = {
@@ -903,24 +924,24 @@ class AdminApp(ctk.CTk):
         self._run_bg(
             fn=job,
             on_success=success,
-            success_message="User created successfully.",
-            busy_message="Creating user...",
+            success_message=self.tr("admin_feedback_created"),
+            busy_message=self.tr("admin_feedback_creating"),
         )
 
     def _update_user(self) -> None:
         user_id = self._resolve_user_id(self.update_id_var.get())
         if user_id is None:
-            msgbox.showwarning("Validation", "Valid user ID is required")
+            msgbox.showwarning(self.tr("admin_warning_title"), self.tr("admin_validation_user_id_required"))
             return
 
         email = self.update_email_var.get().strip().lower()
         full_name = self.update_name_var.get().strip()
 
         if not email or not full_name:
-            msgbox.showwarning("Validation", "Email and full name are required")
+            msgbox.showwarning(self.tr("admin_warning_title"), self.tr("admin_validation_email_name_required"))
             return
         if not self._validate_email(email):
-            msgbox.showwarning("Validation", "Please provide a valid email address")
+            msgbox.showwarning(self.tr("admin_warning_title"), self.tr("admin_validation_invalid_email"))
             return
 
         payload = {
@@ -948,19 +969,19 @@ class AdminApp(ctk.CTk):
         self._run_bg(
             fn=job,
             on_success=success,
-            success_message="User profile updated.",
-            busy_message="Updating user profile...",
+            success_message=self.tr("admin_feedback_updated"),
+            busy_message=self.tr("admin_feedback_updating"),
         )
 
     def _reset_password(self) -> None:
         user_id = self._resolve_user_id(self.reset_id_var.get())
         if user_id is None:
-            msgbox.showwarning("Validation", "Valid user ID is required")
+            msgbox.showwarning(self.tr("admin_warning_title"), self.tr("admin_validation_user_id_required"))
             return
 
         new_password = self.reset_password_var.get()
         if len(new_password) < 8:
-            msgbox.showwarning("Validation", "Password must have at least 8 characters")
+            msgbox.showwarning(self.tr("admin_warning_title"), self.tr("admin_validation_password_length"))
             return
 
         def job():
@@ -972,14 +993,14 @@ class AdminApp(ctk.CTk):
         self._run_bg(
             fn=job,
             on_success=success,
-            success_message="Password reset successfully.",
-            busy_message="Resetting password...",
+            success_message=self.tr("admin_feedback_password_reset"),
+            busy_message=self.tr("admin_feedback_resetting"),
         )
 
     def _change_status(self, is_active: bool) -> None:
         user_id = self._resolve_user_id(self.action_id_var.get())
         if user_id is None:
-            msgbox.showwarning("Validation", "Valid user ID is required")
+            msgbox.showwarning(self.tr("admin_warning_title"), self.tr("admin_validation_user_id_required"))
             return
 
         def job():
@@ -997,21 +1018,21 @@ class AdminApp(ctk.CTk):
             self._render_stats(payload["stats"])
             self._populate_selected_user(payload["updated"])
 
-        action_name = "Activating" if is_active else "Deactivating"
+        action_name = self.tr("admin_feedback_activating") if is_active else self.tr("admin_feedback_deactivating")
         self._run_bg(
             fn=job,
             on_success=success,
-            success_message="User status updated.",
-            busy_message=f"{action_name} user...",
+            success_message=self.tr("admin_feedback_status"),
+            busy_message=action_name,
         )
 
     def _delete_user(self) -> None:
         user_id = self._resolve_user_id(self.action_id_var.get())
         if user_id is None:
-            msgbox.showwarning("Validation", "Valid user ID is required")
+            msgbox.showwarning(self.tr("admin_warning_title"), self.tr("admin_validation_user_id_required"))
             return
 
-        if not msgbox.askyesno("Confirm", f"Delete user #{user_id}? This action cannot be undone."):
+        if not msgbox.askyesno(self.tr("admin_confirm_title"), self.tr("admin_delete_confirm", user_id=user_id)):
             return
 
         def job():
@@ -1034,8 +1055,8 @@ class AdminApp(ctk.CTk):
         self._run_bg(
             fn=job,
             on_success=success,
-            success_message="User deleted.",
-            busy_message="Deleting user...",
+            success_message=self.tr("admin_feedback_deleted"),
+            busy_message=self.tr("admin_feedback_deleting"),
         )
 
 

@@ -17,7 +17,13 @@ Use this checklist before creating a release tag.
 ./scripts/db_migrate.ps1
 ```
 
-4. Update `CHANGELOG.md`:
+4. Build desktop executables locally (Windows):
+
+```powershell
+./scripts/build_desktop.ps1
+```
+
+5. Update `CHANGELOG.md`:
    - Keep `## [Unreleased]` section.
    - Add a version section in this format:
 
@@ -47,5 +53,6 @@ git push origin v0.1.0
 ## Post-release
 
 1. Confirm release artifact is downloadable.
-2. Verify docs and changelog links in release notes.
-3. Start next cycle under `## [Unreleased]`.
+2. Confirm desktop executables are attached (`AIAssistUser.exe`, `AIAssistAdmin.exe`).
+3. Verify docs and changelog links in release notes.
+4. Start next cycle under `## [Unreleased]`.
