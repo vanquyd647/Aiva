@@ -1,0 +1,18 @@
+# Gemini API (SDK mới nhất)
+google-genai>=1.0.0
+
+# Environment variables
+python-dotenv>=1.0.0
+
+# Desktop GUI
+customtkinter>=5.2.0
+
+# Admin app API client
+requests>=2.32.0
+
+# Backend API service (auth, user management, cache)
+-r backend/requirements.txt
+
+# Packaging (dùng khi build .exe)
+# pyinstaller>=6.0.0
+

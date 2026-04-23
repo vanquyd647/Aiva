@@ -1,0 +1,20 @@
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+exclude = [
+  ".venv",
+  "chat_history",
+  "__pycache__",
+  "backend/app.db",
+]
+
+[tool.ruff.lint]
+select = ["F", "E9"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["backend/tests"]

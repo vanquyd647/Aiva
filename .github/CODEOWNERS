@@ -1,0 +1,10 @@
+# Default reviewers for all changes
+* @ai-assist-maintainers
+
+# Backend and security sensitive areas
+/backend/app/core/ @ai-assist-maintainers
+/backend/app/api/ @ai-assist-maintainers
+/backend/alembic/ @ai-assist-maintainers
+
+# CI and release workflow
+/.github/workflows/ @ai-assist-maintainers

@@ -1,0 +1,36 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: aiassist-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: aiassist-backend
+    ports:
+      - "8080:8080"
+    environment:
+      ENV: development
+      API_V1_PREFIX: /api/v1
+      DATABASE_URL: sqlite:///./backend/data/app.db
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-replace-with-a-strong-random-secret}
+      INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL:-admin@aiassist.app}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-replace-with-strong-admin-password}
+      CORS_ALLOW_ORIGINS: '["http://localhost:3000","http://127.0.0.1:3000"]'
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - backend_data:/workspace/backend/data
+
+volumes:
+  backend_data:
