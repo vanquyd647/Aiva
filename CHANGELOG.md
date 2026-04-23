@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- TBD
+
+## [0.2.0] - 2026-04-23
+
+### Added
 - Admin API extensions for operational management:
   - User statistics endpoint.
   - User profile update endpoint.
