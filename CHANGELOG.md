@@ -5,7 +5,22 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- (no entries yet)
+- Admin API extensions for operational management:
+  - User statistics endpoint.
+  - User profile update endpoint.
+  - User password reset endpoint.
+  - Guardrails to prevent self-downgrade and self-deactivation for admins.
+- New backend test coverage for admin management flows.
+- Admin desktop UX upgrades:
+  - Logout action and authentication-state handling.
+  - CSV export for current user table page.
+  - Pagination controls now reflect first/last page states.
+  - Keyboard shortcut for quick refresh.
+- User desktop UX upgrades:
+  - Conversation search in sidebar.
+  - Export current conversation to markdown.
+  - Clear current conversation with confirmation.
+  - Keyboard shortcuts for new chat/export/search focus.
 
 ## [0.1.0] - 2026-04-23
 

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import re
 import threading
 import tkinter as tk
+import tkinter.filedialog as filedialog
 import tkinter.messagebox as msgbox
 
 import customtkinter as ctk
@@ -151,6 +153,8 @@ class AdminApp(ctk.CTk):
         self.client = ApiClient()
         self.page = 1
         self.page_size = 15
+        self._total_users = 0
+        self._total_pages = 1
         self._busy = False
         self._logged_in = False
         self._users_by_id: dict[int, dict] = {}
@@ -159,6 +163,7 @@ class AdminApp(ctk.CTk):
         self._build_ui()
         self._set_logged_in(False)
         self._set_feedback("Sign in to manage users.", "info")
+        self._bind_shortcuts()
 
     def _build_ui(self) -> None:
         self.grid_columnconfigure(0, weight=1)
@@ -204,6 +209,12 @@ class AdminApp(ctk.CTk):
 
         self.login_btn = ctk.CTkButton(auth, text="Sign In", width=100, command=self._login)
         self.login_btn.pack(side="left", padx=(0, 10))
+
+        self.logout_btn = ctk.CTkButton(auth, text="Logout", width=90, command=self._logout)
+        self.logout_btn.pack(side="left", padx=(0, 8))
+
+        self.export_btn = ctk.CTkButton(auth, text="Export CSV", width=110, command=self._export_users_csv)
+        self.export_btn.pack(side="left", padx=(0, 10))
 
         self.auth_status_lbl = ctk.CTkLabel(
             auth,
@@ -337,6 +348,8 @@ class AdminApp(ctk.CTk):
         self.feedback_lbl.pack(fill="x")
 
         self._protected_widgets = [
+            self.logout_btn,
+            self.export_btn,
             self.search_entry,
             self.search_btn,
             self.refresh_btn,
@@ -363,6 +376,13 @@ class AdminApp(ctk.CTk):
             self.deactivate_btn,
             self.delete_btn,
         ]
+
+    def _bind_shortcuts(self) -> None:
+        self.bind("<Control-r>", self._shortcut_refresh)
+
+    def _shortcut_refresh(self, _event=None):
+        self._refresh_dashboard(reset_page=False)
+        return "break"
 
     def _build_stat_card(self, parent: ctk.CTkFrame, col: int, label: str, key: str) -> None:
         card = ctk.CTkFrame(parent, corner_radius=10)
@@ -528,8 +548,12 @@ class AdminApp(ctk.CTk):
     def _set_logged_in(self, logged_in: bool) -> None:
         self._logged_in = logged_in
         if not logged_in:
+            self.client.token = None
             self.page = 1
+            self._total_users = 0
+            self._total_pages = 1
             self._users_by_id.clear()
+            self.password_var.set("")
             self._render_users({"items": [], "total": 0, "page": 1, "page_size": self.page_size})
             self._render_stats({"total": 0, "active": 0, "inactive": 0, "admins": 0})
             self.auth_status_lbl.configure(
@@ -558,6 +582,16 @@ class AdminApp(ctk.CTk):
         self.backend_entry.configure(state="disabled" if self._busy else "normal")
         self.email_entry.configure(state="disabled" if self._busy else "normal")
         self.password_entry.configure(state="disabled" if self._busy else "normal")
+        self._sync_paging_controls()
+
+    def _sync_paging_controls(self) -> None:
+        if not self._logged_in or self._busy:
+            self.prev_btn.configure(state="disabled")
+            self.next_btn.configure(state="disabled")
+            return
+
+        self.prev_btn.configure(state="normal" if self.page > 1 else "disabled")
+        self.next_btn.configure(state="normal" if self.page < self._total_pages else "disabled")
 
     def _run_bg(self, fn, on_success=None, success_message: str | None = None, busy_message: str = "Working...") -> None:
         self._busy = True
@@ -621,6 +655,15 @@ class AdminApp(ctk.CTk):
         self.stat_values["admins"].configure(text=str(payload.get("admins", 0)))
 
     def _render_users(self, payload: dict) -> None:
+        self._total_users = max(0, int(payload.get("total", 0) or 0))
+        self.page = max(1, int(payload.get("page", self.page) or 1))
+
+        payload_page_size = int(payload.get("page_size", self.page_size) or self.page_size)
+        self.page_size = payload_page_size if payload_page_size > 0 else self.page_size
+        self.page_size_var.set(str(self.page_size))
+
+        self._total_pages = max(1, (self._total_users + self.page_size - 1) // self.page_size)
+
         self.user_box.configure(state="normal")
         self.user_box.delete("1.0", "end")
 
@@ -646,11 +689,12 @@ class AdminApp(ctk.CTk):
         self.user_box.configure(state="disabled")
         self.page_lbl.configure(
             text=(
-                f"Page {payload.get('page', self.page)} | "
-                f"Total users: {payload.get('total', 0)} | "
-                f"Page size: {payload.get('page_size', self.page_size)}"
+                f"Page {self.page}/{self._total_pages} | "
+                f"Total users: {self._total_users} | "
+                f"Page size: {self.page_size}"
             )
         )
+        self._sync_paging_controls()
 
     def _populate_selected_user(self, user: dict) -> None:
         user_id = str(user["id"])
@@ -688,6 +732,39 @@ class AdminApp(ctk.CTk):
             self.page_size = 15
             self.page_size_var.set("15")
         self._refresh_dashboard(reset_page=True)
+
+    def _logout(self) -> None:
+        if not self._logged_in:
+            return
+        self.search_var.set("")
+        self._set_logged_in(False)
+        self._set_feedback("Signed out.", "info")
+
+    def _export_users_csv(self) -> None:
+        if not self._logged_in:
+            msgbox.showwarning("Export", "Please sign in first")
+            return
+        if not self._users_by_id:
+            msgbox.showinfo("Export", "No users on current page to export")
+            return
+
+        file_path = filedialog.asksaveasfilename(
+            title="Export users to CSV",
+            defaultextension=".csv",
+            initialfile=f"users_page_{self.page}.csv",
+            filetypes=[("CSV", "*.csv"), ("All files", "*.*")],
+        )
+        if not file_path:
+            return
+
+        fieldnames = ["id", "email", "full_name", "role", "is_active", "created_at", "updated_at"]
+        with open(file_path, "w", encoding="utf-8", newline="") as fh:
+            writer = csv.DictWriter(fh, fieldnames=fieldnames)
+            writer.writeheader()
+            for user_id in sorted(self._users_by_id):
+                writer.writerow(self._users_by_id[user_id])
+
+        self._set_feedback(f"Exported CSV: {file_path}", "success")
 
     def _login(self) -> None:
         url = self.backend_url_var.get().strip()
@@ -766,10 +843,16 @@ class AdminApp(ctk.CTk):
         )
 
     def _next_page(self) -> None:
+        if self.page >= self._total_pages:
+            self._set_feedback("You are already on the last page.", "info")
+            return
         self.page += 1
         self._refresh_dashboard(reset_page=False)
 
     def _prev_page(self) -> None:
+        if self.page <= 1:
+            self._set_feedback("You are already on the first page.", "info")
+            return
         self.page = max(1, self.page - 1)
         self._refresh_dashboard(reset_page=False)
 
