@@ -9,10 +9,53 @@ from app.core.config import settings
 from app.core.security import get_password_hash
 from app.db.session import get_db
 from app.models.user import User
-from app.schemas.user import UserCreate, UserListOut, UserOut, UserStatusUpdate
+from app.schemas.user import (
+    UserCreate,
+    UserListOut,
+    UserOut,
+    UserPasswordReset,
+    UserStatsOut,
+    UserStatusUpdate,
+    UserUpdate,
+)
 from app.services.cache import cache
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+async def _invalidate_users_cache() -> None:
+    await cache.delete_prefix("users:list:")
+    await cache.delete_prefix("users:stats")
+
+
+def _get_user_or_404(db: Session, user_id: int) -> User:
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return user
+
+
+@router.get("/stats", response_model=UserStatsOut)
+async def users_stats(
+    _: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
+    cache_key = "users:stats"
+    cached = await cache.get_json(cache_key)
+    if cached is not None:
+        return UserStatsOut(**cached)
+
+    total = db.query(User).count()
+    active = db.query(User).filter(User.is_active.is_(True)).count()
+    admins = db.query(User).filter(User.role == "admin").count()
+    payload = {
+        "total": total,
+        "active": active,
+        "inactive": max(0, total - active),
+        "admins": admins,
+    }
+    await cache.set_json(cache_key, payload, 30)
+    return UserStatsOut(**payload)
 
 
 @router.get("", response_model=UserListOut)
@@ -76,7 +119,77 @@ async def create_user(
     db.add(user)
     db.commit()
     db.refresh(user)
-    await cache.delete_prefix("users:list:")
+    await _invalidate_users_cache()
+    return user
+
+
+@router.patch("/{user_id}", response_model=UserOut)
+async def update_user(
+    user_id: int,
+    payload: UserUpdate,
+    current_admin: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
+    user = _get_user_or_404(db, user_id)
+    update_data = payload.model_dump(exclude_unset=True, exclude_none=True)
+
+    if not update_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one field is required",
+        )
+
+    normalized_email = None
+    if "email" in update_data:
+        normalized_email = update_data["email"].strip().lower()
+        existing = (
+            db.query(User)
+            .filter(User.email == normalized_email, User.id != user_id)
+            .first()
+        )
+        if existing:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already exists")
+
+    new_role = update_data.get("role")
+    if user.id == current_admin.id and new_role == "user":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Admin cannot downgrade itself",
+        )
+
+    if user.id == current_admin.id and update_data.get("is_active") is False:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Admin cannot deactivate itself",
+        )
+
+    if normalized_email is not None:
+        user.email = normalized_email
+    if "full_name" in update_data:
+        user.full_name = update_data["full_name"]
+    if "role" in update_data:
+        user.role = update_data["role"]
+    if "is_active" in update_data:
+        user.is_active = update_data["is_active"]
+
+    db.commit()
+    db.refresh(user)
+    await _invalidate_users_cache()
+    return user
+
+
+@router.patch("/{user_id}/password", response_model=UserOut)
+async def reset_user_password(
+    user_id: int,
+    payload: UserPasswordReset,
+    _: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
+    user = _get_user_or_404(db, user_id)
+    user.hashed_password = get_password_hash(payload.new_password)
+    db.commit()
+    db.refresh(user)
+    await _invalidate_users_cache()
     return user
 
 
@@ -87,9 +200,7 @@ async def update_user_status(
     current_admin: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db),
 ):
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    user = _get_user_or_404(db, user_id)
 
     if user.id == current_admin.id and not payload.is_active:
         raise HTTPException(
@@ -100,7 +211,7 @@ async def update_user_status(
     user.is_active = payload.is_active
     db.commit()
     db.refresh(user)
-    await cache.delete_prefix("users:list:")
+    await _invalidate_users_cache()
     return user
 
 
@@ -110,9 +221,7 @@ async def delete_user(
     current_admin: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db),
 ):
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    user = _get_user_or_404(db, user_id)
 
     if user.id == current_admin.id:
         raise HTTPException(
@@ -122,5 +231,5 @@ async def delete_user(
 
     db.delete(user)
     db.commit()
-    await cache.delete_prefix("users:list:")
+    await _invalidate_users_cache()
     return None

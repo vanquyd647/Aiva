@@ -4,7 +4,9 @@ GUI chính: Sidebar hội thoại + Khung chat + Settings
 """
 
 import tkinter as tk
+import tkinter.filedialog as filedialog
 import tkinter.messagebox as msgbox
+from pathlib import Path
 import customtkinter as ctk
 
 import core.config as cfg_module
@@ -71,11 +73,12 @@ class SettingsDialog(ctk.CTkToplevel):
 
 
 class Sidebar(ctk.CTkFrame):
-    def __init__(self, parent, on_select, on_new, on_delete):
+    def __init__(self, parent, on_select, on_new, on_delete, on_search):
         super().__init__(parent, width=SIDEBAR_W, corner_radius=0)
         self.on_select = on_select
         self.on_new    = on_new
         self.on_delete = on_delete
+        self.on_search = on_search
         self._buttons: dict[str, ctk.CTkButton] = {}
         self._active_id: str | None = None
         self._build()
@@ -98,8 +101,21 @@ class Sidebar(ctk.CTkFrame):
             command=self.on_new,
         ).pack(side="right")
 
+        self.search_var = ctk.StringVar(value="")
+        self.search_entry = ctk.CTkEntry(
+            self,
+            textvariable=self.search_var,
+            placeholder_text="Search conversations",
+            height=30,
+        )
+        self.search_entry.pack(fill="x", padx=12, pady=(0, 6))
+        self.search_entry.bind("<KeyRelease>", self._emit_search)
+
         self.list_frame = ctk.CTkScrollableFrame(self, corner_radius=0, fg_color="transparent")
         self.list_frame.pack(fill="both", expand=True, padx=4)
+
+    def _emit_search(self, _event=None):
+        self.on_search(self.search_var.get().strip())
 
     def refresh(self, conversations: list[dict], active_id: str | None = None):
         for w in self.list_frame.winfo_children():
@@ -276,9 +292,12 @@ class App(ctk.CTk):
         self.cfg      = cfg_module.load()
         self.conv     = history.new_conversation()
         self._is_busy = False
+        self._conversation_query = ""
 
         self._build_layout()
         self._refresh_sidebar()
+        self._update_meta()
+        self._bind_shortcuts()
 
     # ─── Layout ──────────────────────────────────────────────────────────────
     def _build_layout(self):
@@ -291,6 +310,7 @@ class App(ctk.CTk):
             on_select=self._load_conversation,
             on_new=self._new_conversation,
             on_delete=self._delete_conversation,
+            on_search=self._on_sidebar_search,
         )
         self.sidebar.grid(row=0, column=0, sticky="nsew")
 
@@ -316,6 +336,29 @@ class App(ctk.CTk):
             font=ctk.CTkFont(size=12),
             text_color=("gray35", "gray65"),
         ).pack(anchor="w")
+        self.meta_lbl = ctk.CTkLabel(
+            title_wrap,
+            text="0 messages",
+            font=ctk.CTkFont(size=11),
+            text_color=("gray40", "gray60"),
+        )
+        self.meta_lbl.pack(anchor="w")
+
+        ctk.CTkButton(
+            topbar,
+            text="Export",
+            width=78,
+            height=30,
+            command=self._export_current_conversation,
+        ).pack(side="right", padx=(0, 8))
+
+        ctk.CTkButton(
+            topbar,
+            text="Clear",
+            width=70,
+            height=30,
+            command=self._clear_current_messages,
+        ).pack(side="right", padx=(0, 8))
 
         self.status_lbl = ctk.CTkLabel(
             topbar,
@@ -359,13 +402,24 @@ class App(ctk.CTk):
     # ─── Sidebar actions ─────────────────────────────────────────────────────
     def _refresh_sidebar(self):
         convos = history.list_conversations()
+        if self._conversation_query:
+            needle = self._conversation_query.lower()
+            convos = [
+                c for c in convos
+                if needle in c.get("title", "").lower()
+            ]
         self.sidebar.refresh(convos, active_id=self.conv.get("id"))
+
+    def _on_sidebar_search(self, query: str):
+        self._conversation_query = query
+        self._refresh_sidebar()
 
     def _new_conversation(self):
         self.conv = history.new_conversation()
         self.chat.clear()
         self.title_lbl.configure(text=APP_TITLE)
         self._set_status("Ready", "ready")
+        self._update_meta()
         self._refresh_sidebar()
 
     def _load_conversation(self, conv_id: str):
@@ -374,6 +428,7 @@ class App(ctk.CTk):
         for msg in self.conv.get("messages", []):
             self.chat.add_message(msg["role"], msg["text"])
         self.title_lbl.configure(text=self.conv.get("title", APP_TITLE))
+        self._update_meta()
         self._refresh_sidebar()
 
     def _delete_conversation(self, conv_id: str):
@@ -397,6 +452,7 @@ class App(ctk.CTk):
         # Hiển thị tin nhắn người dùng
         self.chat.add_message("user", text)
         self.conv["messages"].append({"role": "user", "text": text})
+        self._update_meta()
 
         # Cập nhật tiêu đề nếu là tin đầu
         if len(self.conv["messages"]) == 1:
@@ -421,6 +477,7 @@ class App(ctk.CTk):
     def _on_done(self, full_text: str):
         self.conv["messages"].append({"role": "assistant", "text": full_text})
         history.save_conversation(self.conv)
+        self._update_meta()
         self.after(0, self._after_response)
 
     def _on_error(self, err: str):
@@ -436,6 +493,81 @@ class App(ctk.CTk):
         if self.status_lbl.cget("text") != "Error":
             self._set_status("Ready", "ready")
         self._refresh_sidebar()
+
+    def _update_meta(self):
+        msg_count = len(self.conv.get("messages", []))
+        updated_at = self.conv.get("updated_at") or self.conv.get("created_at") or ""
+        if updated_at:
+            self.meta_lbl.configure(text=f"{msg_count} messages • updated {updated_at[:16].replace('T', ' ')}")
+        else:
+            self.meta_lbl.configure(text=f"{msg_count} messages")
+
+    def _clear_current_messages(self):
+        if not self.conv.get("messages"):
+            msgbox.showinfo("Thông báo", "Hội thoại hiện tại đang trống")
+            return
+        if not msgbox.askyesno("Xác nhận", "Xoá toàn bộ tin nhắn trong hội thoại hiện tại?"):
+            return
+
+        self.conv["messages"] = []
+        self.conv["title"] = "Hội thoại mới"
+        self.chat.clear()
+        self.title_lbl.configure(text=APP_TITLE)
+        history.save_conversation(self.conv)
+        self._update_meta()
+        self._refresh_sidebar()
+        self._set_status("Conversation cleared", "ready")
+
+    def _safe_file_stem(self, value: str) -> str:
+        cleaned = "".join(ch if ch.isalnum() or ch in {"-", "_", " "} else "_" for ch in value)
+        cleaned = " ".join(cleaned.split()).strip()
+        return cleaned or "conversation"
+
+    def _export_current_conversation(self):
+        messages = self.conv.get("messages", [])
+        if not messages:
+            msgbox.showinfo("Thông báo", "Không có nội dung để export")
+            return
+
+        title = self.conv.get("title", "conversation")
+        default_name = f"{self._safe_file_stem(title)}.md"
+        file_path = filedialog.asksaveasfilename(
+            title="Export Conversation",
+            defaultextension=".md",
+            initialfile=default_name,
+            filetypes=[("Markdown", "*.md"), ("Text", "*.txt"), ("All files", "*.*")],
+        )
+        if not file_path:
+            return
+
+        lines = [f"# {title}", "", f"Conversation ID: {self.conv.get('id', '-')}", ""]
+        for item in messages:
+            role = "User" if item.get("role") == "user" else "Assistant"
+            lines.append(f"## {role}")
+            lines.append(item.get("text", ""))
+            lines.append("")
+
+        output = "\n".join(lines).strip() + "\n"
+        Path(file_path).write_text(output, encoding="utf-8")
+        self._set_status("Conversation exported", "ready")
+        msgbox.showinfo("Export", f"Đã lưu hội thoại: {file_path}")
+
+    def _bind_shortcuts(self):
+        self.bind("<Control-n>", self._shortcut_new_conversation)
+        self.bind("<Control-e>", self._shortcut_export)
+        self.bind("<Control-k>", self._shortcut_focus_search)
+
+    def _shortcut_new_conversation(self, _event=None):
+        self._new_conversation()
+        return "break"
+
+    def _shortcut_export(self, _event=None):
+        self._export_current_conversation()
+        return "break"
+
+    def _shortcut_focus_search(self, _event=None):
+        self.sidebar.search_entry.focus_set()
+        return "break"
 
     # ─── Settings ────────────────────────────────────────────────────────────
     def _open_settings(self):

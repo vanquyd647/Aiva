@@ -23,6 +23,7 @@ build/
 chat_history/
 chat_history/*.json
 logs/
+config.json
 
 # Local database files
 backend/*.db
