@@ -75,6 +75,28 @@ class UsageOverviewOut(BaseModel):
     top_users: list[UsageTopUserOut]
 
 
+class BackendMonitorOut(BaseModel):
+    status: Literal["ok", "degraded"]
+    generated_at: datetime
+    app_name: str
+    env: str
+    db_status: Literal["ready", "error"]
+    cache_mode: str
+
+    total_users: int
+    active_users: int
+    active_sessions: int
+    revoked_sessions: int
+
+    audit_events_24h: int
+    usage_events_24h: int
+
+    gemini_key_source: Literal["database", "env", "none"]
+    gemini_has_active_key: bool
+    gemini_validation_model: str
+    quota_alert_threshold_ratio: float
+
+
 class GeminiKeyStatusOut(BaseModel):
     provider: str
     has_active_key: bool

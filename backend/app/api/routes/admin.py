@@ -2,17 +2,24 @@
 
 from __future__ import annotations
 
+import os
+from datetime import UTC, datetime, timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_admin_user
+from app.core.config import settings
 from app.db.session import get_db
 from app.models.audit_log import AuditLog
+from app.models.usage_event import UsageEvent
 from app.models.user import User
 from app.models.user_session import UserSession
 from app.schemas.governance import (
     AuditLogListOut,
     AuditLogOut,
+    BackendMonitorOut,
     GeminiKeyRotateIn,
     GeminiKeyRotateOut,
     GeminiKeyStatusOut,
@@ -26,6 +33,7 @@ from app.services.admin_gemini_keys import (
     get_status_payload,
     rotate_payload,
 )
+from app.services.cache import cache
 from app.services.governance import (
     parse_details,
     revoke_session_by_sid,
@@ -33,8 +41,89 @@ from app.services.governance import (
     usage_overview,
     write_audit_log,
 )
+from app.services.provider_secrets import GEMINI_PROVIDER, get_active_provider_secret
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+@router.get("/backend-monitor", response_model=BackendMonitorOut)
+def backend_monitor(
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(get_current_admin_user),
+):
+    generated_at = datetime.now(UTC)
+    since_24h = generated_at - timedelta(hours=24)
+
+    db_status = "ready"
+    try:
+        db.execute(text("SELECT 1"))
+    except Exception:
+        db_status = "error"
+
+    total_users = int(db.query(func.count(User.id)).scalar() or 0)
+    active_users = int(
+        db.query(func.count(User.id)).filter(User.is_active.is_(True)).scalar() or 0
+    )
+    active_sessions = int(
+        db.query(func.count(UserSession.id)).filter(UserSession.revoked_at.is_(None)).scalar()
+        or 0
+    )
+    revoked_sessions = int(
+        db.query(func.count(UserSession.id)).filter(UserSession.revoked_at.is_not(None)).scalar()
+        or 0
+    )
+    audit_events_24h = int(
+        db.query(func.count(AuditLog.id)).filter(AuditLog.created_at >= since_24h).scalar() or 0
+    )
+    usage_events_24h = int(
+        db.query(func.count(UsageEvent.id)).filter(UsageEvent.created_at >= since_24h).scalar() or 0
+    )
+
+    key_row = get_active_provider_secret(db, provider=GEMINI_PROVIDER)
+    if key_row is not None:
+        gemini_key_source = "database"
+        gemini_has_active_key = True
+    else:
+        env_key = os.getenv("GEMINI_API_KEY", "").strip()
+        has_env_key = bool(env_key) and settings.GEMINI_FALLBACK_ENV_API_KEY_ENABLED
+        gemini_key_source = "env" if has_env_key else "none"
+        gemini_has_active_key = has_env_key
+
+    monitor_status = "ok" if db_status == "ready" else "degraded"
+
+    write_audit_log(
+        db,
+        actor_user_id=current_admin.id,
+        action="admin.backend_monitor.view",
+        target_type="backend_monitor",
+        status="success",
+        severity="info",
+        details={
+            "status": monitor_status,
+            "db_status": db_status,
+            "cache_mode": cache.mode,
+            "active_sessions": active_sessions,
+        },
+    )
+
+    return BackendMonitorOut(
+        status=monitor_status,
+        generated_at=generated_at,
+        app_name=settings.APP_NAME,
+        env=settings.ENV,
+        db_status=db_status,
+        cache_mode=cache.mode,
+        total_users=total_users,
+        active_users=active_users,
+        active_sessions=active_sessions,
+        revoked_sessions=revoked_sessions,
+        audit_events_24h=audit_events_24h,
+        usage_events_24h=usage_events_24h,
+        gemini_key_source=gemini_key_source,
+        gemini_has_active_key=gemini_has_active_key,
+        gemini_validation_model=settings.GEMINI_VALIDATION_MODEL,
+        quota_alert_threshold_ratio=settings.QUOTA_ALERT_THRESHOLD_RATIO,
+    )
 
 
 @router.get("/audit", response_model=AuditLogListOut)

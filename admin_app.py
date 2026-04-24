@@ -235,6 +235,16 @@ class ApiClient:
             raise ValueError(self._error_text(resp))
         return resp.json()
 
+    def get_backend_monitor(self) -> dict:
+        resp = requests.get(
+            f"{self.base_url}/api/v1/admin/backend-monitor",
+            headers=self._headers(),
+            timeout=20,
+        )
+        if resp.status_code >= 400:
+            raise ValueError(self._error_text(resp))
+        return resp.json()
+
     def rotate_gemini_key(
         self,
         *,
@@ -280,6 +290,7 @@ class AdminApp(ctk.CTk):
         self._sessions_by_id: dict[str, dict] = {}
         self._last_usage_overview: dict = {}
         self._last_my_usage: dict = {}
+        self._last_backend_monitor: dict = {}
         self._protected_widgets: list[object] = []
 
         self._build_ui()
@@ -437,23 +448,37 @@ class AdminApp(ctk.CTk):
         table_wrap.grid_columnconfigure(0, weight=1)
         table_wrap.grid_rowconfigure(0, weight=1)
 
-        table_style = ttk.Style()
+        table_style = ttk.Style(self)
+        try:
+            # `clam` applies custom Treeview colors consistently on Windows.
+            table_style.theme_use("clam")
+        except tk.TclError:
+            pass
         table_style.configure(
             "Admin.Treeview",
-            background="#10151f",
-            foreground="#cfe3ff",
-            fieldbackground="#10151f",
-            rowheight=26,
+            background="#0f1724",
+            foreground="#ecf3ff",
+            fieldbackground="#0f1724",
+            rowheight=28,
             borderwidth=0,
         )
         table_style.configure(
             "Admin.Treeview.Heading",
-            background="#1d2a3a",
-            foreground="#d6e7ff",
+            background="#20324a",
+            foreground="#f5f9ff",
             relief="flat",
             borderwidth=0,
         )
-        table_style.map("Admin.Treeview", background=[("selected", "#2b4f74")])
+        table_style.map(
+            "Admin.Treeview",
+            background=[("selected", "#2f6db2")],
+            foreground=[("selected", "#ffffff")],
+        )
+        table_style.map(
+            "Admin.Treeview.Heading",
+            background=[("active", "#2a3f5a")],
+            foreground=[("active", "#ffffff")],
+        )
 
         self.user_table = ttk.Treeview(
             table_wrap,
@@ -499,10 +524,20 @@ class AdminApp(ctk.CTk):
         security_tab = tabs.add(self.tr("admin_tab_security"))
         actions_tab = tabs.add(self.tr("admin_tab_actions"))
         governance_tab = tabs.add(self.tr("admin_tab_governance"))
+        backend_monitor_tab = tabs.add(self.tr("admin_tab_backend_monitor"))
         usage_tab = tabs.add(self.tr("admin_tab_usage"))
         keys_tab = tabs.add(self.tr("admin_tab_api_keys"))
 
-        for tab in (create_tab, update_tab, security_tab, actions_tab, governance_tab, usage_tab, keys_tab):
+        for tab in (
+            create_tab,
+            update_tab,
+            security_tab,
+            actions_tab,
+            governance_tab,
+            backend_monitor_tab,
+            usage_tab,
+            keys_tab,
+        ):
             tab.grid_columnconfigure(0, weight=1)
 
         self._build_create_tab(create_tab)
@@ -510,6 +545,7 @@ class AdminApp(ctk.CTk):
         self._build_security_tab(security_tab)
         self._build_actions_tab(actions_tab)
         self._build_governance_tab(governance_tab)
+        self._build_backend_monitor_tab(backend_monitor_tab)
         self._build_usage_tab(usage_tab)
         self._build_keys_tab(keys_tab)
 
@@ -554,6 +590,7 @@ class AdminApp(ctk.CTk):
             self.deactivate_btn,
             self.delete_btn,
             self.refresh_governance_btn,
+            self.refresh_backend_monitor_btn,
             self.revoke_session_btn,
             self.revoke_user_sessions_btn,
             self.gemini_key_entry,
@@ -806,10 +843,62 @@ class AdminApp(ctk.CTk):
         )
         self.revoke_user_sessions_btn.pack(side="left")
 
-        self.audit_box = ctk.CTkTextbox(parent, height=180, corner_radius=10, wrap="word")
+        self.audit_box = ctk.CTkTextbox(
+            parent,
+            height=180,
+            corner_radius=10,
+            wrap="word",
+            fg_color=("#f4f7fb", "#0f1a2a"),
+            text_color=("#1f2937", "#e9f1ff"),
+        )
         self.audit_box.grid(row=4, column=0, sticky="nsew", padx=12, pady=(0, 12))
         self.audit_box.insert("1.0", self.tr("admin_governance_no_data"))
         self.audit_box.configure(state="disabled")
+
+    def _build_backend_monitor_tab(self, parent: ctk.CTkFrame) -> None:
+        parent.grid_rowconfigure(2, weight=1)
+
+        ctk.CTkLabel(
+            parent,
+            text=self.tr("admin_backend_monitor_title"),
+            font=ctk.CTkFont(size=16, weight="bold"),
+        ).grid(row=0, column=0, sticky="w", padx=12, pady=(12, 8))
+
+        row = ctk.CTkFrame(parent, fg_color="transparent")
+        row.grid(row=1, column=0, sticky="ew", padx=12, pady=(0, 8))
+
+        self.backend_monitor_status_lbl = ctk.CTkLabel(
+            row,
+            text=self.tr("admin_backend_monitor_status_default"),
+            anchor="w",
+            justify="left",
+            fg_color=("#ececec", "#2f2f2f"),
+            text_color=("#444444", "#d8d8d8"),
+            corner_radius=8,
+            padx=10,
+            pady=6,
+        )
+        self.backend_monitor_status_lbl.pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+        self.refresh_backend_monitor_btn = ctk.CTkButton(
+            row,
+            width=130,
+            text=self.tr("admin_backend_monitor_refresh"),
+            command=self._refresh_backend_monitor,
+        )
+        self.refresh_backend_monitor_btn.pack(side="left")
+
+        self.backend_monitor_box = ctk.CTkTextbox(
+            parent,
+            height=260,
+            corner_radius=10,
+            wrap="word",
+            fg_color=("#f4f7fb", "#0f1a2a"),
+            text_color=("#1f2937", "#e9f1ff"),
+        )
+        self.backend_monitor_box.grid(row=2, column=0, sticky="nsew", padx=12, pady=(0, 12))
+        self.backend_monitor_box.insert("1.0", self.tr("admin_backend_monitor_status_default"))
+        self.backend_monitor_box.configure(state="disabled")
 
     def _build_usage_tab(self, parent: ctk.CTkFrame) -> None:
         parent.grid_rowconfigure(4, weight=1)
@@ -840,7 +929,14 @@ class AdminApp(ctk.CTk):
         self.my_usage_token_bar.grid(row=5, column=0, sticky="ew", padx=12, pady=(0, 8))
         self.my_usage_token_bar.set(0)
 
-        self.usage_top_users_box = ctk.CTkTextbox(parent, height=220, corner_radius=10, wrap="word")
+        self.usage_top_users_box = ctk.CTkTextbox(
+            parent,
+            height=220,
+            corner_radius=10,
+            wrap="word",
+            fg_color=("#f4f7fb", "#0f1a2a"),
+            text_color=("#1f2937", "#e9f1ff"),
+        )
         self.usage_top_users_box.grid(row=6, column=0, sticky="nsew", padx=12, pady=(0, 12))
         self.usage_top_users_box.insert("1.0", self.tr("admin_usage_no_data"))
         self.usage_top_users_box.configure(state="disabled")
@@ -947,6 +1043,26 @@ class AdminApp(ctk.CTk):
             self._render_users({"items": [], "total": 0, "page": 1, "page_size": self.page_size})
             self._render_stats({"total": 0, "active": 0, "inactive": 0, "admins": 0})
             self._render_governance({"items": []}, {"items": []})
+            self._render_backend_monitor(
+                {
+                    "status": "degraded",
+                    "generated_at": None,
+                    "app_name": "-",
+                    "env": "-",
+                    "db_status": "error",
+                    "cache_mode": "-",
+                    "total_users": 0,
+                    "active_users": 0,
+                    "active_sessions": 0,
+                    "revoked_sessions": 0,
+                    "audit_events_24h": 0,
+                    "usage_events_24h": 0,
+                    "gemini_key_source": "none",
+                    "gemini_has_active_key": False,
+                    "gemini_validation_model": "-",
+                    "quota_alert_threshold_ratio": 0.0,
+                }
+            )
             self._render_usage(
                 {
                     "window_days": 0,
@@ -1215,6 +1331,87 @@ class AdminApp(ctk.CTk):
         self.audit_box.insert("1.0", "\n".join(lines))
         self.audit_box.configure(state="disabled")
 
+    def _render_backend_monitor(self, payload: dict) -> None:
+        self._last_backend_monitor = dict(payload)
+
+        status = str(payload.get("status", "degraded"))
+        generated_at = self._fmt_dt(payload.get("generated_at"))
+
+        if status == "ok":
+            status_text = self.tr("admin_backend_monitor_status_ok", generated_at=generated_at)
+            fg_color = ("#d9f7e8", "#1e3b2f")
+            text_color = ("#115a35", "#93f0c3")
+        else:
+            status_text = self.tr("admin_backend_monitor_status_degraded", generated_at=generated_at)
+            fg_color = ("#ffdcdc", "#4f2424")
+            text_color = ("#8a1d1d", "#ff9b9b")
+
+        self.backend_monitor_status_lbl.configure(
+            text=status_text,
+            fg_color=fg_color,
+            text_color=text_color,
+        )
+
+        lines = [self.tr("admin_backend_monitor_snapshot_header")]
+        lines.append(
+            self.tr(
+                "admin_backend_monitor_line_app",
+                app_name=payload.get("app_name", "-"),
+                env=payload.get("env", "-"),
+            )
+        )
+        lines.append(
+            self.tr(
+                "admin_backend_monitor_line_db_cache",
+                db_status=payload.get("db_status", "-"),
+                cache_mode=payload.get("cache_mode", "-"),
+            )
+        )
+        lines.append(
+            self.tr(
+                "admin_backend_monitor_line_users",
+                total_users=payload.get("total_users", 0),
+                active_users=payload.get("active_users", 0),
+            )
+        )
+        lines.append(
+            self.tr(
+                "admin_backend_monitor_line_sessions",
+                active_sessions=payload.get("active_sessions", 0),
+                revoked_sessions=payload.get("revoked_sessions", 0),
+            )
+        )
+        lines.append(
+            self.tr(
+                "admin_backend_monitor_line_events",
+                audit_events=payload.get("audit_events_24h", 0),
+                usage_events=payload.get("usage_events_24h", 0),
+            )
+        )
+        lines.append(
+            self.tr(
+                "admin_backend_monitor_line_gemini",
+                source=payload.get("gemini_key_source", "none"),
+                active=(
+                    self.tr("admin_yes")
+                    if bool(payload.get("gemini_has_active_key", False))
+                    else self.tr("admin_no")
+                ),
+                model=payload.get("gemini_validation_model", "-"),
+            )
+        )
+        lines.append(
+            self.tr(
+                "admin_backend_monitor_line_quota",
+                threshold=payload.get("quota_alert_threshold_ratio", 0),
+            )
+        )
+
+        self.backend_monitor_box.configure(state="normal")
+        self.backend_monitor_box.delete("1.0", "end")
+        self.backend_monitor_box.insert("1.0", "\n".join(lines))
+        self.backend_monitor_box.configure(state="disabled")
+
     def _render_usage(self, usage_payload: dict, my_usage_payload: dict) -> None:
         self._last_usage_overview = dict(usage_payload)
         self._last_my_usage = dict(my_usage_payload)
@@ -1329,6 +1526,23 @@ class AdminApp(ctk.CTk):
             busy_message=self.tr("admin_gemini_refreshing"),
         )
 
+    def _refresh_backend_monitor(self) -> None:
+        if not self._logged_in:
+            return
+
+        def job():
+            return self.client.get_backend_monitor()
+
+        def success(payload: dict) -> None:
+            self._render_backend_monitor(payload)
+
+        self._run_bg(
+            fn=job,
+            on_success=success,
+            success_message=self.tr("admin_backend_monitor_refreshed"),
+            busy_message=self.tr("admin_backend_monitor_refreshing"),
+        )
+
     def _test_gemini_key(self) -> None:
         raw_key = self.gemini_key_value_var.get().strip()
         if len(raw_key) < 20:
@@ -1415,18 +1629,21 @@ class AdminApp(ctk.CTk):
             usage_payload = self.client.get_usage_overview(page=1, page_size=30)
             my_usage_payload = self.client.get_my_usage()
             gemini_key_payload = self.client.get_gemini_key_status()
+            backend_monitor_payload = self.client.get_backend_monitor()
             return {
                 "sessions": sessions_payload,
                 "audit": audit_payload,
                 "usage": usage_payload,
                 "my_usage": my_usage_payload,
                 "gemini_key": gemini_key_payload,
+                "backend_monitor": backend_monitor_payload,
             }
 
         def success(payload: dict) -> None:
             self._render_governance(payload["sessions"], payload["audit"])
             self._render_usage(payload["usage"], payload["my_usage"])
             self._render_gemini_key_status(payload["gemini_key"])
+            self._render_backend_monitor(payload["backend_monitor"])
             self._apply_usage_alert(payload["usage"], payload["my_usage"])
 
         self._run_bg(
@@ -1575,6 +1792,7 @@ class AdminApp(ctk.CTk):
             usage_payload = self.client.get_usage_overview(page=1, page_size=30)
             my_usage_payload = self.client.get_my_usage()
             gemini_key_payload = self.client.get_gemini_key_status()
+            backend_monitor_payload = self.client.get_backend_monitor()
             return {
                 "auth": auth_payload,
                 "health": health_payload,
@@ -1585,6 +1803,7 @@ class AdminApp(ctk.CTk):
                 "usage": usage_payload,
                 "my_usage": my_usage_payload,
                 "gemini_key": gemini_key_payload,
+                "backend_monitor": backend_monitor_payload,
             }
 
         def success(payload: dict) -> None:
@@ -1601,6 +1820,7 @@ class AdminApp(ctk.CTk):
             self._render_governance(payload["sessions"], payload["audit"])
             self._render_usage(payload["usage"], payload["my_usage"])
             self._render_gemini_key_status(payload["gemini_key"])
+            self._render_backend_monitor(payload["backend_monitor"])
             self._apply_usage_alert(payload["usage"], payload["my_usage"])
 
         self.page = 1
@@ -1633,6 +1853,7 @@ class AdminApp(ctk.CTk):
             usage_payload = self.client.get_usage_overview(page=1, page_size=30)
             my_usage_payload = self.client.get_my_usage()
             gemini_key_payload = self.client.get_gemini_key_status()
+            backend_monitor_payload = self.client.get_backend_monitor()
             return {
                 "users": users_payload,
                 "stats": stats_payload,
@@ -1642,6 +1863,7 @@ class AdminApp(ctk.CTk):
                 "usage": usage_payload,
                 "my_usage": my_usage_payload,
                 "gemini_key": gemini_key_payload,
+                "backend_monitor": backend_monitor_payload,
             }
 
         def success(payload: dict) -> None:
@@ -1651,6 +1873,7 @@ class AdminApp(ctk.CTk):
             self._render_governance(payload["sessions"], payload["audit"])
             self._render_usage(payload["usage"], payload["my_usage"])
             self._render_gemini_key_status(payload["gemini_key"])
+            self._render_backend_monitor(payload["backend_monitor"])
             self._apply_usage_alert(payload["usage"], payload["my_usage"])
 
         self._run_bg(

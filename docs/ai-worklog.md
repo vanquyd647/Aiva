@@ -108,3 +108,18 @@ Track every AI-assisted code change here. This file is mandatory for code-change
 ### Gemini Key Validation Model Switch
 - Switched backend default key-validation model from `gemini-2.0-flash-lite` to `gemma-4-31b-it`.
 - Updated both root and backend `.env.example` templates to keep runtime defaults aligned with backend config.
+
+### Admin Readability Color Fix
+- Increased visual contrast for admin tables/log panes to resolve unreadable text reports:
+	- tuned `Admin.Treeview` colors (row text, heading colors, selected-row foreground/background),
+	- set explicit high-contrast colors for governance audit textbox and usage top-users textbox.
+
+### Backend Monitor + Gemma Runtime Visibility
+- Added backend monitor endpoint `GET /api/v1/admin/backend-monitor` to expose runtime operations snapshot:
+	- DB/cache status,
+	- active/revoked sessions,
+	- audit/usage event activity (24h),
+	- Gemini key source + validation model + quota threshold.
+- Integrated new Backend Monitor tab into `admin_app.py` and wired it into login/refresh/governance refresh flows.
+- Added backend test coverage for the monitor endpoint in `backend/tests/test_admin_governance.py`.
+- User app now appends Gemma function-calling/tool-call details (tool name and args) into final backend response rendering.

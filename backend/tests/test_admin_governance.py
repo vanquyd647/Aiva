@@ -158,6 +158,25 @@ def test_admin_actions_are_present_in_audit_log() -> None:
         )
 
 
+def test_backend_monitor_returns_runtime_snapshot() -> None:
+    with TestClient(app) as client:
+        auth_payload = _login_admin(client)
+        headers = {"Authorization": f"Bearer {auth_payload['access_token']}"}
+
+        response = client.get("/api/v1/admin/backend-monitor", headers=headers)
+        assert response.status_code == 200
+
+        payload = response.json()
+        assert payload["status"] in {"ok", "degraded"}
+        assert payload["db_status"] in {"ready", "error"}
+        assert payload["cache_mode"] in {"memory", "redis"}
+        assert payload["gemini_key_source"] in {"database", "env", "none"}
+        assert payload["gemini_validation_model"] == settings.GEMINI_VALIDATION_MODEL
+        assert isinstance(payload["total_users"], int)
+        assert isinstance(payload["active_users"], int)
+        assert isinstance(payload["active_sessions"], int)
+
+
 def test_gemini_key_dry_run_does_not_persist(monkeypatch) -> None:
     old_fallback = settings.GEMINI_FALLBACK_ENV_API_KEY_ENABLED
     settings.GEMINI_FALLBACK_ENV_API_KEY_ENABLED = False

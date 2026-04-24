@@ -81,6 +81,9 @@ All notable changes to this project will be documented in this file.
 - Fixed Gemini request compatibility by sending `stream_function_call_arguments` only when the installed SDK/API supports the field.
 - User desktop runtime is now hard-locked to backend-only mode (local Gemini route removed from send/attachment/branching flows and backend-stream setting is forced on).
 - Admin Gemini key test/rotate validation default now targets `gemma-4-31b-it` (config + env examples) instead of `gemini-2.0-flash-lite`.
+- Improved admin dashboard readability by increasing table/log text contrast (users/sessions Treeview + governance/usage text areas), including selected-row text color.
+- Added admin backend runtime monitor (`/api/v1/admin/backend-monitor`) and integrated it into Admin app with live snapshot fields (DB/cache/session/audit/usage/Gemini key source/model).
+- User app now surfaces Gemma tool/function-calling output in chat responses (tool name + args), not only in settings.
 - Clean-code pass across backend + desktop modules:
   - Fixed async exception-capture closures that could trigger undefined-name lint errors.
   - Normalized SQLAlchemy relationship typing with forward-reference safe annotations.

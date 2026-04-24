@@ -1436,6 +1436,10 @@ class App(ctk.CTk):
             if user_index is not None:
                 self.conv["messages"][user_index]["server_message_id"] = user_message_id
 
+        tool_calls = runtime_cfg.get("_backend_last_tool_calls")
+        if isinstance(tool_calls, list) and tool_calls:
+            full_text = self._append_tool_calls_to_response(full_text, tool_calls)
+
         citations = runtime_cfg.get("_backend_last_citations")
         if isinstance(citations, list) and citations:
             full_text = self._append_citations_to_response(full_text, citations)
@@ -1452,6 +1456,24 @@ class App(ctk.CTk):
             lines.append(self.tr("chat_citation_line", index=index, title=title, url=url))
             if snippet:
                 lines.append(self.tr("chat_citation_snippet", snippet=snippet))
+        return "\n".join(lines).strip()
+
+    def _append_tool_calls_to_response(self, full_text: str, tool_calls: list[dict]) -> str:
+        lines = [full_text.strip(), "", self.tr("chat_tool_calls_header")]
+        for index, item in enumerate(tool_calls, start=1):
+            tool_name = str(item.get("name") or item.get("tool_type") or "unknown").strip()
+            lines.append(self.tr("chat_tool_call_line", index=index, name=tool_name))
+
+            args_value = item.get("args")
+            if args_value is None:
+                args_value = item.get("partial_args")
+
+            if args_value:
+                args_text = json.dumps(args_value, ensure_ascii=False)
+                if len(args_text) > 300:
+                    args_text = args_text[:300] + "..."
+                lines.append(self.tr("chat_tool_call_args", args=args_text))
+
         return "\n".join(lines).strip()
 
     def _on_chunk(self, chunk: str):
