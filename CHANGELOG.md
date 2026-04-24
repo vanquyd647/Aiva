@@ -80,6 +80,7 @@ All notable changes to this project will be documented in this file.
 - User settings now support backend login to fetch access token directly, with clearer auth-failure prompts and automatic backend-stream disable when token is missing.
 - Fixed Gemini request compatibility by sending `stream_function_call_arguments` only when the installed SDK/API supports the field.
 - User desktop runtime is now hard-locked to backend-only mode (local Gemini route removed from send/attachment/branching flows and backend-stream setting is forced on).
+- Admin Gemini key test/rotate validation default now targets `gemma-4-31b-it` (config + env examples) instead of `gemini-2.0-flash-lite`.
 - Clean-code pass across backend + desktop modules:
   - Fixed async exception-capture closures that could trigger undefined-name lint errors.
   - Normalized SQLAlchemy relationship typing with forward-reference safe annotations.

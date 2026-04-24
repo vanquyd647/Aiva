@@ -104,3 +104,7 @@ Track every AI-assisted code change here. This file is mandatory for code-change
 	- forced `use_backend_stream=True` at startup and on settings save,
 	- disabled backend-stream toggle in settings UI and added explicit backend-only notice,
 	- removed local attachment routing branch so uploads always go through backend APIs.
+
+### Gemini Key Validation Model Switch
+- Switched backend default key-validation model from `gemini-2.0-flash-lite` to `gemma-4-31b-it`.
+- Updated both root and backend `.env.example` templates to keep runtime defaults aligned with backend config.

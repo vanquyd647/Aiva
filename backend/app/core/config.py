@@ -42,7 +42,7 @@ class Settings(BaseSettings):
 
     GEMINI_SECRET_ENCRYPTION_KEY: str | None = None
     GEMINI_FALLBACK_ENV_API_KEY_ENABLED: bool = True
-    GEMINI_VALIDATION_MODEL: str = "gemini-2.0-flash-lite"
+    GEMINI_VALIDATION_MODEL: str = "gemma-4-31b-it"
 
     USAGE_WINDOW_DAYS: int = 30
     QUOTA_ALERT_THRESHOLD_RATIO: float = 0.8
