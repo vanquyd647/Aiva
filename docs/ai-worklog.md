@@ -123,3 +123,17 @@ Track every AI-assisted code change here. This file is mandatory for code-change
 - Integrated new Backend Monitor tab into `admin_app.py` and wired it into login/refresh/governance refresh flows.
 - Added backend test coverage for the monitor endpoint in `backend/tests/test_admin_governance.py`.
 - User app now appends Gemma function-calling/tool-call details (tool name and args) into final backend response rendering.
+
+### User Quick Controls (Gemini-Web Style)
+- Added a persistent quick-controls bar on the user chat screen so common runtime options can be changed immediately without opening Settings.
+- Wired quick controls directly to runtime config persistence (`config.json`) and backend payload settings:
+	- model selector,
+	- temperature slider with debounced save,
+	- thinking toggle,
+	- web citations toggle,
+	- function-calling mode selector.
+- Added new user i18n keys (vi/en) for quick-control labels and function-mode choices.
+- Extended quick controls with phase-2 interaction patterns:
+	- style presets (`Balanced`, `Creative`, `Precise`) that apply coordinated `temperature/top_p/top_k` bundles,
+	- one-tap JSON response mode toggle (`response_mime_type=application/json`),
+	- collapsible secondary controls row to reduce visual noise and keep chat focus.

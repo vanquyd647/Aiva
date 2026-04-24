@@ -993,6 +993,8 @@ class App(ctk.CTk):
         self._draft_save_job: str | None = None
         self._pending_attachments: list[dict] = []
         self._last_usage_summary: dict = {}
+        self._quick_controls_syncing = False
+        self._quick_temp_save_job: str | None = None
 
         self._build_layout()
         self._refresh_sidebar()
@@ -1022,7 +1024,7 @@ class App(ctk.CTk):
         # Right panel
         right = ctk.CTkFrame(self, corner_radius=0, fg_color="transparent")
         right.grid(row=0, column=1, sticky="nsew")
-        right.grid_rowconfigure(1, weight=1)
+        right.grid_rowconfigure(2, weight=1)
         right.grid_columnconfigure(0, weight=1)
 
         # Top bar
@@ -1113,6 +1115,8 @@ class App(ctk.CTk):
             command=self._open_settings,
         ).pack(side="right", padx=(0, 10))
 
+        self._build_quick_controls(right)
+
         # Chat area
         self.chat = ChatArea(
             right,
@@ -1123,7 +1127,384 @@ class App(ctk.CTk):
             on_clear_attachments=self._clear_pending_attachments,
             tr=self.tr,
         )
-        self.chat.grid(row=1, column=0, sticky="nsew")
+        self.chat.grid(row=2, column=0, sticky="nsew")
+
+    @staticmethod
+    def _normalize_function_calling_mode(value: object) -> str:
+        normalized = str(value or "").strip().lower()
+        if normalized in {"auto", "any", "none", "validated"}:
+            return normalized
+        return "unset"
+
+    def _quick_model_values(self) -> list[str]:
+        models = [
+            str(item).strip()
+            for item in (self.cfg.get("available_models") or [])
+            if str(item).strip()
+        ]
+        current = str(self.cfg.get("model", "gemma-4-31b-it")).strip() or "gemma-4-31b-it"
+        if current not in models:
+            models.insert(0, current)
+        if not models:
+            models = [current]
+        return models
+
+    def _build_quick_mode_maps(self) -> None:
+        self._quick_mode_display_to_value = {
+            self.tr("quick_controls_mode_unset"): "unset",
+            self.tr("quick_controls_mode_auto"): "auto",
+            self.tr("quick_controls_mode_any"): "any",
+            self.tr("quick_controls_mode_none"): "none",
+            self.tr("quick_controls_mode_validated"): "validated",
+        }
+        self._quick_mode_value_to_display = {
+            value: key for key, value in self._quick_mode_display_to_value.items()
+        }
+
+    def _build_quick_style_maps(self) -> None:
+        self._quick_style_display_to_value = {
+            self.tr("quick_controls_style_balanced"): "balanced",
+            self.tr("quick_controls_style_creative"): "creative",
+            self.tr("quick_controls_style_precise"): "precise",
+            self.tr("quick_controls_style_custom"): "custom",
+        }
+        self._quick_style_value_to_display = {
+            value: key for key, value in self._quick_style_display_to_value.items()
+        }
+
+    @staticmethod
+    def _quick_style_presets() -> dict[str, dict[str, float | int]]:
+        return {
+            "balanced": {"temperature": 1.0, "top_p": 0.95, "top_k": 64},
+            "creative": {"temperature": 1.35, "top_p": 1.0, "top_k": 96},
+            "precise": {"temperature": 0.35, "top_p": 0.7, "top_k": 32},
+        }
+
+    def _resolve_quick_style_token_from_cfg(self) -> str:
+        temperature = round(float(self.cfg.get("temperature", 1.0) or 1.0), 2)
+        top_p = round(float(self.cfg.get("top_p", 0.95) or 0.95), 2)
+        top_k = int(self.cfg.get("top_k", 64) or 64)
+
+        for token, preset in self._quick_style_presets().items():
+            preset_temp = round(float(preset["temperature"]), 2)
+            preset_top_p = round(float(preset["top_p"]), 2)
+            preset_top_k = int(preset["top_k"])
+            if (
+                abs(temperature - preset_temp) <= 0.01
+                and abs(top_p - preset_top_p) <= 0.01
+                and top_k == preset_top_k
+            ):
+                return token
+        return "custom"
+
+    def _set_quick_style_control_values(self, values: list[str]) -> None:
+        if hasattr(self, "quick_style_segmented"):
+            self.quick_style_segmented.configure(values=values)
+        else:
+            self.quick_style_menu.configure(values=values)
+
+    def _set_quick_style_control_value(self, display_value: str) -> None:
+        if hasattr(self, "quick_style_segmented"):
+            self.quick_style_segmented.set(display_value)
+        else:
+            self.quick_style_var.set(display_value)
+
+    def _build_quick_controls(self, parent: ctk.CTkFrame) -> None:
+        self._build_quick_mode_maps()
+        self._build_quick_style_maps()
+        self._quick_controls_expanded = bool(self.cfg.get("quick_controls_expanded", True))
+
+        quickbar = ctk.CTkFrame(
+            parent,
+            corner_radius=10,
+            fg_color=("#edf2fb", "#1a2537"),
+        )
+        quickbar.grid(row=1, column=0, sticky="ew", padx=10, pady=(6, 8))
+
+        header_row = ctk.CTkFrame(quickbar, fg_color="transparent")
+        header_row.pack(fill="x", padx=10, pady=(8, 4))
+
+        ctk.CTkLabel(
+            header_row,
+            text=self.tr("quick_controls_title"),
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(side="left")
+
+        ctk.CTkButton(
+            header_row,
+            text=self.tr("quick_controls_more"),
+            width=86,
+            height=26,
+            command=self._open_settings,
+        ).pack(side="right", padx=(8, 0))
+
+        self.quick_toggle_btn = ctk.CTkButton(
+            header_row,
+            text="",
+            width=88,
+            height=26,
+            command=self._toggle_quick_controls_expanded,
+        )
+        self.quick_toggle_btn.pack(side="right")
+
+        self.quick_primary_row = ctk.CTkFrame(quickbar, fg_color="transparent")
+        self.quick_primary_row.pack(fill="x", padx=10, pady=(0, 6))
+
+        ctk.CTkLabel(self.quick_primary_row, text=self.tr("quick_controls_model")).pack(
+            side="left", padx=(0, 4)
+        )
+        self.quick_model_var = ctk.StringVar(value=str(self.cfg.get("model", "gemma-4-31b-it")))
+        self.quick_model_menu = ctk.CTkOptionMenu(
+            self.quick_primary_row,
+            variable=self.quick_model_var,
+            values=self._quick_model_values(),
+            width=170,
+            command=self._on_quick_model_change,
+        )
+        self.quick_model_menu.pack(side="left", padx=(0, 8), pady=6)
+
+        ctk.CTkLabel(self.quick_primary_row, text=self.tr("quick_controls_temperature")).pack(
+            side="left", padx=(0, 4)
+        )
+        self.quick_temp_var = ctk.DoubleVar(value=float(self.cfg.get("temperature", 1.0)))
+        self.quick_temp_slider = ctk.CTkSlider(
+            self.quick_primary_row,
+            from_=0,
+            to=2,
+            number_of_steps=40,
+            variable=self.quick_temp_var,
+            width=120,
+            command=self._on_quick_temperature_change,
+        )
+        self.quick_temp_slider.pack(side="left", padx=(0, 4), pady=6)
+        self.quick_temp_value_lbl = ctk.CTkLabel(
+            self.quick_primary_row,
+            text=f"{float(self.cfg.get('temperature', 1.0)):.2f}",
+            width=40,
+        )
+        self.quick_temp_value_lbl.pack(side="left", padx=(0, 12))
+
+        ctk.CTkLabel(self.quick_primary_row, text=self.tr("quick_controls_style")).pack(
+            side="left", padx=(0, 4)
+        )
+        quick_style_values = list(self._quick_style_display_to_value.keys())
+        if hasattr(ctk, "CTkSegmentedButton"):
+            self.quick_style_segmented = ctk.CTkSegmentedButton(
+                self.quick_primary_row,
+                values=quick_style_values,
+                command=self._on_quick_style_change,
+                width=260,
+                height=28,
+            )
+            self.quick_style_segmented.pack(side="left", padx=(0, 6), pady=6)
+        else:
+            self.quick_style_var = ctk.StringVar(value=quick_style_values[0])
+            self.quick_style_menu = ctk.CTkOptionMenu(
+                self.quick_primary_row,
+                variable=self.quick_style_var,
+                values=quick_style_values,
+                width=140,
+                command=self._on_quick_style_change,
+            )
+            self.quick_style_menu.pack(side="left", padx=(0, 6), pady=6)
+
+        self.quick_secondary_row = ctk.CTkFrame(quickbar, fg_color="transparent")
+        self.quick_secondary_row.pack(fill="x", padx=10, pady=(0, 8))
+
+        self.quick_thinking_var = tk.BooleanVar(value=bool(self.cfg.get("enable_thinking", False)))
+        self.quick_thinking_switch = ctk.CTkSwitch(
+            self.quick_secondary_row,
+            text=self.tr("quick_controls_thinking"),
+            variable=self.quick_thinking_var,
+            onvalue=True,
+            offvalue=False,
+            command=self._on_quick_toggle_thinking,
+        )
+        self.quick_thinking_switch.pack(side="left", padx=(0, 8), pady=6)
+
+        self.quick_web_citations_var = tk.BooleanVar(value=bool(self.cfg.get("use_web_citations", True)))
+        self.quick_web_citations_switch = ctk.CTkSwitch(
+            self.quick_secondary_row,
+            text=self.tr("quick_controls_web"),
+            variable=self.quick_web_citations_var,
+            onvalue=True,
+            offvalue=False,
+            command=self._on_quick_toggle_web_citations,
+        )
+        self.quick_web_citations_switch.pack(side="left", padx=(0, 8), pady=6)
+
+        self.quick_json_mode_var = tk.BooleanVar(
+            value=str(self.cfg.get("response_mime_type") or "").lower() == "application/json"
+        )
+        self.quick_json_mode_switch = ctk.CTkSwitch(
+            self.quick_secondary_row,
+            text=self.tr("quick_controls_json"),
+            variable=self.quick_json_mode_var,
+            onvalue=True,
+            offvalue=False,
+            command=self._on_quick_toggle_json_mode,
+        )
+        self.quick_json_mode_switch.pack(side="left", padx=(0, 12), pady=6)
+
+        ctk.CTkLabel(self.quick_secondary_row, text=self.tr("quick_controls_function_mode")).pack(
+            side="left", padx=(0, 4)
+        )
+        self.quick_function_mode_var = ctk.StringVar(value=self._quick_mode_value_to_display["unset"])
+        self.quick_function_mode_menu = ctk.CTkOptionMenu(
+            self.quick_secondary_row,
+            variable=self.quick_function_mode_var,
+            values=list(self._quick_mode_display_to_value.keys()),
+            width=130,
+            command=self._on_quick_function_mode_change,
+        )
+        self.quick_function_mode_menu.pack(side="left", padx=(0, 8), pady=6)
+
+        self._sync_quick_controls_from_cfg()
+        self._apply_quick_controls_expanded_state()
+
+    def _persist_quick_controls(self) -> None:
+        cfg_module.save(self.cfg)
+
+    def _apply_quick_controls_expanded_state(self) -> None:
+        is_expanded = bool(self._quick_controls_expanded)
+        if is_expanded:
+            if not self.quick_secondary_row.winfo_manager():
+                self.quick_secondary_row.pack(fill="x", padx=10, pady=(0, 8))
+            self.quick_toggle_btn.configure(text=self.tr("quick_controls_collapse"))
+        else:
+            if self.quick_secondary_row.winfo_manager():
+                self.quick_secondary_row.pack_forget()
+            self.quick_toggle_btn.configure(text=self.tr("quick_controls_expand"))
+
+    def _toggle_quick_controls_expanded(self) -> None:
+        if self._quick_controls_syncing:
+            return
+        self._quick_controls_expanded = not bool(self._quick_controls_expanded)
+        self.cfg["quick_controls_expanded"] = self._quick_controls_expanded
+        self._persist_quick_controls()
+        self._apply_quick_controls_expanded_state()
+
+    def _sync_quick_controls_from_cfg(self) -> None:
+        if not hasattr(self, "quick_model_var"):
+            return
+
+        self._build_quick_mode_maps()
+        self._build_quick_style_maps()
+        self._quick_controls_syncing = True
+        try:
+            model_values = self._quick_model_values()
+            self.quick_model_menu.configure(values=model_values)
+            selected_model = str(self.cfg.get("model", model_values[0])).strip() or model_values[0]
+            if selected_model not in model_values:
+                selected_model = model_values[0]
+            self.quick_model_var.set(selected_model)
+
+            temperature = float(self.cfg.get("temperature", 1.0) or 1.0)
+            temperature = max(0.0, min(2.0, temperature))
+            self.quick_temp_var.set(temperature)
+            self.quick_temp_value_lbl.configure(text=f"{temperature:.2f}")
+
+            self.quick_thinking_var.set(bool(self.cfg.get("enable_thinking", False)))
+            self.quick_web_citations_var.set(bool(self.cfg.get("use_web_citations", True)))
+            self.quick_json_mode_var.set(
+                str(self.cfg.get("response_mime_type") or "").lower() == "application/json"
+            )
+
+            style_values = list(self._quick_style_display_to_value.keys())
+            self._set_quick_style_control_values(style_values)
+            style_token = self._resolve_quick_style_token_from_cfg()
+            style_display = self._quick_style_value_to_display.get(style_token, style_values[0])
+            self._set_quick_style_control_value(style_display)
+
+            mode_token = self._normalize_function_calling_mode(
+                self.cfg.get("function_calling_mode")
+            )
+            mode_values = list(self._quick_mode_display_to_value.keys())
+            self.quick_function_mode_menu.configure(values=mode_values)
+            self.quick_function_mode_var.set(
+                self._quick_mode_value_to_display.get(mode_token, mode_values[0])
+            )
+
+            self._quick_controls_expanded = bool(self.cfg.get("quick_controls_expanded", True))
+            self._apply_quick_controls_expanded_state()
+        finally:
+            self._quick_controls_syncing = False
+
+    def _on_quick_style_change(self, selected: str) -> None:
+        if self._quick_controls_syncing:
+            return
+        style_token = self._quick_style_display_to_value.get(str(selected), "balanced")
+        if style_token == "custom":
+            return
+
+        preset = self._quick_style_presets().get(style_token)
+        if preset is None:
+            return
+
+        self.cfg["temperature"] = float(preset["temperature"])
+        self.cfg["top_p"] = float(preset["top_p"])
+        self.cfg["top_k"] = int(preset["top_k"])
+        self.cfg["quick_style_preset"] = style_token
+        self._persist_quick_controls()
+        self._sync_quick_controls_from_cfg()
+
+    def _on_quick_model_change(self, selected: str) -> None:
+        if self._quick_controls_syncing:
+            return
+        value = str(selected).strip()
+        if not value:
+            return
+        self.cfg["model"] = value
+        self._persist_quick_controls()
+        if not self._is_busy:
+            self._set_status(self.tr("status_model", model=value), "ready")
+
+    def _commit_quick_temperature(self) -> None:
+        self._quick_temp_save_job = None
+        if self._quick_controls_syncing:
+            return
+        self.cfg["temperature"] = round(float(self.quick_temp_var.get()), 2)
+        self._persist_quick_controls()
+        self._sync_quick_controls_from_cfg()
+
+    def _on_quick_temperature_change(self, _value: float) -> None:
+        self.quick_temp_value_lbl.configure(text=f"{float(self.quick_temp_var.get()):.2f}")
+        if self._quick_controls_syncing:
+            return
+        if self._quick_temp_save_job is not None:
+            try:
+                self.after_cancel(self._quick_temp_save_job)
+            except Exception:
+                pass
+        self._quick_temp_save_job = self.after(220, self._commit_quick_temperature)
+
+    def _on_quick_toggle_thinking(self) -> None:
+        if self._quick_controls_syncing:
+            return
+        self.cfg["enable_thinking"] = bool(self.quick_thinking_var.get())
+        self._persist_quick_controls()
+
+    def _on_quick_toggle_web_citations(self) -> None:
+        if self._quick_controls_syncing:
+            return
+        self.cfg["use_web_citations"] = bool(self.quick_web_citations_var.get())
+        self._persist_quick_controls()
+
+    def _on_quick_toggle_json_mode(self) -> None:
+        if self._quick_controls_syncing:
+            return
+        if bool(self.quick_json_mode_var.get()):
+            self.cfg["response_mime_type"] = "application/json"
+        else:
+            self.cfg["response_mime_type"] = None
+        self._persist_quick_controls()
+
+    def _on_quick_function_mode_change(self, selected: str) -> None:
+        if self._quick_controls_syncing:
+            return
+        token = self._quick_mode_display_to_value.get(str(selected), "unset")
+        self.cfg["function_calling_mode"] = None if token == "unset" else token
+        self._persist_quick_controls()
 
     def _set_status(self, text: str, kind: str = "ready"):
         styles = {
@@ -2019,6 +2400,7 @@ class App(ctk.CTk):
             self.cfg = new_cfg
             cfg_module.save(new_cfg)
             self.i18n.set_language(self.cfg.get("language", "vi"))
+            self._sync_quick_controls_from_cfg()
             self._set_status(self.tr("status_model", model=self.cfg["model"]), "ready")
             self._refresh_usage_summary_async(silent=True)
 
