@@ -73,3 +73,7 @@ Track every AI-assisted code change here. This file is mandatory for code-change
 
 ### Final Integration Pass
 - Consolidated remaining backend/desktop/env-template/test changes into a single full-repo commit scope.
+
+### Desktop Stability Fix
+- Resolved runtime crash when loading conversations caused by `CTkTextbox.cget("state")` not being supported in current CustomTkinter.
+- Updated chat input state handling to use an internal `_input_enabled` flag for safe enable/disable checks.

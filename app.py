@@ -265,6 +265,7 @@ class ChatArea(ctk.CTkFrame):
         self.on_clear_attachments = on_clear_attachments
         self.tr = tr
         self._has_pending_attachments = False
+        self._input_enabled = True
         self._build()
         self._thinking_id: str | None = None
 
@@ -438,7 +439,7 @@ class ChatArea(ctk.CTkFrame):
         return self.input_box.get("1.0", "end").strip()
 
     def set_input_text(self, text: str, notify: bool = False) -> None:
-        was_disabled = str(self.input_box.cget("state")) == "disabled"
+        was_disabled = not self._input_enabled
         if was_disabled:
             self.input_box.configure(state="normal")
 
@@ -485,6 +486,7 @@ class ChatArea(ctk.CTkFrame):
             w.destroy()
 
     def set_input_enabled(self, enabled: bool):
+        self._input_enabled = bool(enabled)
         state = "normal" if enabled else "disabled"
         self.input_box.configure(state=state)
         self.send_btn.configure(state=state)
@@ -514,7 +516,7 @@ class ChatArea(ctk.CTkFrame):
                 names=short_names,
             )
         )
-        if str(self.input_box.cget("state")) != "disabled":
+        if self._input_enabled:
             self.clear_attachments_btn.configure(state="normal")
 
     def _scroll_bottom(self):

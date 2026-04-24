@@ -75,6 +75,7 @@ All notable changes to this project will be documented in this file.
 - Runtime attachment payloads are sent to model requests without persisting binary content to local conversation history.
 - Chat streaming now supports optional web grounding context and emits citations in SSE `done` payload.
 - Desktop user app can enable web citations from settings and appends source references to backend-streamed answers.
+- Fixed desktop conversation-switch crash on Python 3.14 + CustomTkinter by replacing unsupported `CTkTextbox.cget("state")` checks with internal input-state tracking.
 - Clean-code pass across backend + desktop modules:
   - Fixed async exception-capture closures that could trigger undefined-name lint errors.
   - Normalized SQLAlchemy relationship typing with forward-reference safe annotations.
