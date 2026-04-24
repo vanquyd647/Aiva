@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- Gemma 4 advanced generation controls across backend + desktop runtime:
+  - Thinking mode controls (`<|think|>` prompt tag, thinking level, thinking budget, optional thought return).
+  - Native function-calling contract (tool declarations, function-calling mode, allow-list, streaming tool-call events).
+  - Structured output controls (`response_mime_type`, `response_schema`, `response_json_schema`).
+  - Extended multimodal request support for audio/video/PDF inputs (base64 and URI attachment forms).
+- Chat SSE stream now emits `tool_call` events and includes aggregated `tool_calls` in final `done` payload.
+- New chat-stream service unit tests for advanced config mapping, multimodal attachment conversion, and tool-call extraction.
+- Backend secure Gemini key management:
+  - New encrypted `provider_secrets` storage and migration.
+  - Admin API for key status and key rotation (`/api/v1/admin/gemini-key`).
+  - Dry-run key validation mode before persistence.
+  - Runtime Gemini client refresh after rotation without backend restart.
+- Admin desktop API Keys tab:
+  - View masked key fingerprint/source/version.
+  - Test key flow and rotate key flow with confirmation.
+- New backend tests for key dry-run/rotation and chat client credential refresh.
+- New process guard script `scripts/validate_change_docs.py` to require:
+  - `CHANGELOG.md` update for code changes.
+  - `docs/ai-worklog.md` update for code changes.
+- New documentation package:
+  - `docs/ai-assistant-build-guide.md`
+  - `docs/provider-comparison-gemini-chatgpt.md`
+  - `docs/ai-worklog.md`
 - Backend admin governance API (`/api/v1/admin/*`) with:
   - Audit trail listing with filters.
   - Session governance (list and revoke sessions).
@@ -29,6 +52,18 @@ All notable changes to this project will be documented in this file.
 - New backend test coverage for file upload and inline image attachment forwarding in chat stream.
 
 ### Changed
+- Removed obsolete Phase-1 standalone CLI entrypoint (`assistant.py`) to avoid duplicated runtime paths.
+- Removed legacy research draft (`research_gemma4_ai_assistant.md`) after consolidating maintained docs under `docs/`.
+- CI/release/local quality-gate scripts were updated to stop lint/compile checks for removed legacy files.
+- Desktop attachment runtime serialization upgraded from image-only to multimodal inline payloads (image/audio/video/PDF).
+- File upload allow-list extended to support common audio/video formats for Gemma multimodal workflows.
+- Removed empty placeholder package file (`ui/__init__.py`) because it has no imports or runtime references.
+- Removed stale planning document (`docs/premium-product-roadmap.md`) after audit confirmed it is not referenced by runtime, CI, or core docs.
+- Chat Gemini client now resolves credentials from encrypted backend storage first, with optional env fallback.
+- Admin Gemini key route logic was refactored into dedicated application service (`admin_gemini_keys`) to keep API routes thin.
+- Desktop default config now enables backend streaming mode (`use_backend_stream=true`) for backend-managed key flow.
+- CI and local quality gate now enforce change-doc guard (`CHANGELOG.md` + `docs/ai-worklog.md`) when code changes are detected.
+- CONTRIBUTING and release checklist updated with mandatory AI worklog process.
 - Admin desktop app UI upgraded from text-list style to table/dashboard workflow:
   - User table view with row selection.
   - New Governance tab (sessions + audit stream + revoke actions).

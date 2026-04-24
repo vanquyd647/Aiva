@@ -36,7 +36,7 @@ jobs:
         run: python -m pytest backend/tests
 
       - name: Compile smoke test
-        run: python -m compileall backend app.py admin_app.py assistant.py core
+        run: python -m compileall backend app.py admin_app.py core
 
       - name: Build source archive
         run: |

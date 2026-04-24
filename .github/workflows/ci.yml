@@ -12,6 +12,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -24,10 +26,21 @@ jobs:
           pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Ruff lint
-        run: python -m ruff check backend backend/tests app.py admin_app.py assistant.py core
+        run: python -m ruff check backend backend/tests app.py admin_app.py core scripts/validate_change_docs.py
 
       - name: Black format check
-        run: python -m black --check backend backend/tests
+        run: python -m black --check backend backend/tests scripts/validate_change_docs.py
+
+      - name: Validate changelog/worklog updates
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch origin "${{ github.base_ref }}" --depth=1
+            RANGE="origin/${{ github.base_ref }}...HEAD"
+          else
+            RANGE="HEAD~1..HEAD"
+          fi
+          python scripts/validate_change_docs.py --diff-range "$RANGE"
 
   test-matrix:
     name: Test (${{ matrix.os }})
@@ -40,6 +53,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -58,4 +73,4 @@ jobs:
         run: python -m pytest backend/tests
 
       - name: Compile smoke test
-        run: python -m compileall backend app.py admin_app.py assistant.py core
+        run: python -m compileall backend app.py admin_app.py core

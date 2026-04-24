@@ -23,13 +23,14 @@ function Invoke-Step {
 }
 
 if (-not $SkipStyleChecks) {
-    Invoke-Step "[1/4] Ruff lint" { & $pythonCmd -m ruff check backend backend/tests app.py admin_app.py assistant.py core }
-    Invoke-Step "[2/4] Black format check" { & $pythonCmd -m black --check backend backend/tests }
+    Invoke-Step "[1/5] Ruff lint" { & $pythonCmd -m ruff check backend backend/tests app.py admin_app.py core scripts/validate_change_docs.py }
+    Invoke-Step "[2/5] Black format check" { & $pythonCmd -m black --check backend backend/tests scripts/validate_change_docs.py }
 } else {
-    Write-Host "[1/4] Style checks skipped (SkipStyleChecks switch enabled)."
+    Write-Host "[1/5] Style checks skipped (SkipStyleChecks switch enabled)."
 }
 
-Invoke-Step "[3/4] Pytest" { & $pythonCmd -m pytest backend/tests }
-Invoke-Step "[4/4] Compile smoke test" { & $pythonCmd -m compileall backend app.py admin_app.py assistant.py core }
+Invoke-Step "[3/5] Doc update guard" { & $pythonCmd scripts/validate_change_docs.py }
+Invoke-Step "[4/5] Pytest" { & $pythonCmd -m pytest backend/tests }
+Invoke-Step "[5/5] Compile smoke test" { & $pythonCmd -m compileall backend app.py admin_app.py core scripts }
 
 Write-Host "Quality gate passed."
