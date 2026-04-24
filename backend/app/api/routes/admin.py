@@ -61,12 +61,9 @@ def backend_monitor(
         db_status = "error"
 
     total_users = int(db.query(func.count(User.id)).scalar() or 0)
-    active_users = int(
-        db.query(func.count(User.id)).filter(User.is_active.is_(True)).scalar() or 0
-    )
+    active_users = int(db.query(func.count(User.id)).filter(User.is_active.is_(True)).scalar() or 0)
     active_sessions = int(
-        db.query(func.count(UserSession.id)).filter(UserSession.revoked_at.is_(None)).scalar()
-        or 0
+        db.query(func.count(UserSession.id)).filter(UserSession.revoked_at.is_(None)).scalar() or 0
     )
     revoked_sessions = int(
         db.query(func.count(UserSession.id)).filter(UserSession.revoked_at.is_not(None)).scalar()

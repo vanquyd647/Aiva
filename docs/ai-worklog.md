@@ -141,3 +141,15 @@ Track every AI-assisted code change here. This file is mandatory for code-change
 	- `Code`, `Writing`, `Analysis` presets that apply grouped runtime settings (generation + reasoning/tool defaults) in one click,
 	- `Custom` state auto-tracking when users tweak knobs after selecting a task preset.
 - Added per-user preset persistence via config profile mapping (keyed by backend user email, with local fallback) so preferred task preset is restored per user identity.
+
+### Release Signing + Quality Gate Follow-up
+- Resolved remaining style-gate issue by formatting `backend/app/api/routes/admin.py` with Black (format-only, no logic changes).
+- Completed local test-signing hardening for desktop artifacts:
+	- ensured self-signed dev cert trust in `CurrentUser\\Root` and `CurrentUser\\TrustedPublisher`,
+	- applied RFC3161 timestamp to both `dist/desktop/AIAssistUser.exe` and `dist/desktop/AIAssistAdmin.exe` via DigiCert TSA.
+
+### Verification (release follow-up)
+- `Get-AuthenticodeSignature` status is `Valid` for both desktop executables.
+- `signtool verify /pa /v` reports success (0 warnings, 0 errors) for both executables.
+- Timestamp responder chain is present (`DigiCert SHA256 RSA4096 Timestamp Responder 2025 1`).
+- Local quality gate rerun now passes lint/format stages and doc-guard requirements after this documentation update.

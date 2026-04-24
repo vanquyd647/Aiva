@@ -52,6 +52,8 @@ All notable changes to this project will be documented in this file.
 - New backend test coverage for file upload and inline image attachment forwarding in chat stream.
 
 ### Changed
+- Formatted `backend/app/api/routes/admin.py` with Black (no functional behavior change) to keep local/CI quality gate style checks green.
+- Desktop release executables (`AIAssistUser.exe`, `AIAssistAdmin.exe`) were refreshed with test code-signing and RFC3161 timestamping for stable local signature verification.
 - Removed obsolete Phase-1 standalone CLI entrypoint (`assistant.py`) to avoid duplicated runtime paths.
 - Removed legacy research draft (`research_gemma4_ai_assistant.md`) after consolidating maintained docs under `docs/`.
 - CI/release/local quality-gate scripts were updated to stop lint/compile checks for removed legacy files.
