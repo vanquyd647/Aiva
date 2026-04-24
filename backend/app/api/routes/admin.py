@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_admin_user
@@ -13,9 +13,18 @@ from app.models.user_session import UserSession
 from app.schemas.governance import (
     AuditLogListOut,
     AuditLogOut,
+    GeminiKeyRotateIn,
+    GeminiKeyRotateOut,
+    GeminiKeyStatusOut,
     UsageOverviewOut,
     UserSessionListOut,
     UserSessionOut,
+)
+from app.services.admin_gemini_keys import (
+    GeminiKeyServiceError,
+    enforce_rotate_rate_limit,
+    get_status_payload,
+    rotate_payload,
 )
 from app.services.governance import (
     parse_details,
@@ -213,3 +222,37 @@ def admin_usage_overview(
     )
 
     return UsageOverviewOut(**payload)
+
+
+@router.get("/gemini-key", response_model=GeminiKeyStatusOut)
+def gemini_key_status(
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(get_current_admin_user),
+):
+    payload = get_status_payload(db=db, actor_user_id=current_admin.id)
+    return GeminiKeyStatusOut(**payload)
+
+
+@router.post("/gemini-key", response_model=GeminiKeyRotateOut)
+async def rotate_gemini_key(
+    payload: GeminiKeyRotateIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(get_current_admin_user),
+):
+    client_ip = request.client.host if request.client else "unknown"
+    try:
+        await enforce_rotate_rate_limit(actor_user_id=current_admin.id, client_ip=client_ip)
+        result = rotate_payload(
+            db=db,
+            actor_user_id=current_admin.id,
+            api_key=payload.api_key,
+            reason=payload.reason,
+            dry_run=payload.dry_run,
+            validate_with_provider=payload.validate_with_provider,
+            test_model=payload.test_model,
+        )
+    except GeminiKeyServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
+
+    return GeminiKeyRotateOut(**result)

@@ -35,6 +35,12 @@ Desktop AI assistant with a dedicated backend service for authentication, user m
 	- Alert levels: `ok`, `warning`, `exceeded`.
 	- Quota enforcement at chat request time.
 
+- Provider key governance
+	- Backend-only Gemini API key management.
+	- Encrypted secret storage with versioned rotation metadata.
+	- Admin API for key status, dry-run validation, and key rotation.
+	- Runtime key reload without backend restart.
+
 ## Quick Start
 
 1. Create and activate Python virtual environment.
@@ -118,6 +124,7 @@ If Windows Smart App Control blocks unsigned `.exe` binaries, run source launche
 	- Full user lifecycle controls: create, update profile, reset password, activate/deactivate, delete.
 	- Governance tab for audit trail viewing and session revocation.
 	- Usage/Quota tab with usage summary, quota progress bars, and top-user consumption list.
+	- API Keys tab for Gemini key status, dry-run validation, and secure rotation.
 	- Alert feedback when warning/exceeded usage thresholds are detected.
 	- Session controls: relogin and logout.
 	- CSV export of current user page.
@@ -185,8 +192,9 @@ git push origin v0.1.0
 ## Security Notes
 
 - Never commit .env to version control.
-- Rotate GEMINI_API_KEY if it was ever exposed.
+- Rotate Gemini key through admin API (`/api/v1/admin/gemini-key`) to keep audit trail and runtime refresh.
 - Use strong SECRET_KEY and INITIAL_ADMIN_PASSWORD values in all non-local environments.
+- Set GEMINI_SECRET_ENCRYPTION_KEY for dedicated at-rest encryption of provider secrets.
 - Use Postgres and Redis in production.
 
 ## Process Artifacts
@@ -197,4 +205,7 @@ git push origin v0.1.0
 - LICENSE
 - .pre-commit-config.yaml
 - pyproject.toml
+- docs/ai-assistant-build-guide.md
+- docs/provider-comparison-gemini-chatgpt.md
+- docs/ai-worklog.md
 

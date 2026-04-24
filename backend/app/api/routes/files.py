@@ -40,6 +40,16 @@ ALLOWED_EXTENSIONS = {
     ".gif",
     ".bmp",
     ".pdf",
+    ".mp3",
+    ".wav",
+    ".m4a",
+    ".aac",
+    ".ogg",
+    ".flac",
+    ".mp4",
+    ".mov",
+    ".webm",
+    ".mkv",
 }
 
 TEXT_EXTENSIONS = {

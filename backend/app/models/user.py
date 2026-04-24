@@ -13,6 +13,7 @@ from app.db.base import Base
 if TYPE_CHECKING:
     from app.models.audit_log import AuditLog
     from app.models.conversation import Conversation
+    from app.models.provider_secret import ProviderSecret
     from app.models.usage_event import UsageEvent
     from app.models.user_session import UserSession
 
@@ -55,5 +56,10 @@ class User(Base):
     audit_logs: Mapped[list[AuditLog]] = relationship(
         "AuditLog",
         back_populates="actor",
+        passive_deletes=True,
+    )
+    provider_secrets: Mapped[list[ProviderSecret]] = relationship(
+        "ProviderSecret",
+        back_populates="rotated_by",
         passive_deletes=True,
     )

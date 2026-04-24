@@ -272,3 +272,134 @@ def test_chat_stream_done_event_includes_web_citations(monkeypatch) -> None:
     assert isinstance(done_payload.get("citations"), list)
     assert done_payload["citations"]
     assert done_payload["citations"][0]["url"] == "https://example.com/news"
+
+
+def test_chat_stream_forwards_advanced_gemma_options_and_tool_calls(monkeypatch) -> None:
+    def fake_stream_chat_text(messages, cfg):
+        assert messages[-1]["text"] == "Call weather"
+        assert cfg["candidate_count"] == 2
+        assert cfg["stop_sequences"] == ["<END>"]
+        assert cfg["seed"] == 42
+        assert cfg["presence_penalty"] == 0.1
+        assert cfg["frequency_penalty"] == 0.2
+        assert cfg["system_prompt"].startswith("<|think|>")
+        assert cfg["response_mime_type"] == "application/json"
+        assert cfg["response_json_schema"]["type"] == "object"
+        assert cfg["tools"][0]["name"] == "lookup_weather"
+        assert cfg["function_calling_mode"] == "any"
+        assert cfg["allowed_function_names"] == ["lookup_weather"]
+        assert cfg["stream_function_call_arguments"] is True
+        assert cfg["include_server_side_tool_invocations"] is True
+        assert cfg["include_thoughts"] is True
+        assert cfg["thinking_budget_tokens"] == 2048
+        assert cfg["thinking_level"] == "medium"
+        assert cfg["media_resolution"] == "high"
+        assert cfg["safety_settings"][0]["category"] == "harassment"
+
+        yield {
+            "type": "tool_call",
+            "kind": "function",
+            "id": "call-1",
+            "name": "lookup_weather",
+            "args": {"city": "Ha Noi"},
+        }
+        yield '{"status":"ok"}'
+
+    monkeypatch.setattr("app.api.routes.chat.stream_chat_text", fake_stream_chat_text)
+
+    with TestClient(app) as client:
+        headers = _admin_headers()
+        with client.stream(
+            "POST",
+            "/api/v1/chat/stream",
+            headers=headers,
+            json={
+                "messages": [{"role": "user", "text": "Call weather"}],
+                "candidate_count": 2,
+                "stop_sequences": ["<END>"],
+                "seed": 42,
+                "presence_penalty": 0.1,
+                "frequency_penalty": 0.2,
+                "enable_thinking": True,
+                "include_thoughts": True,
+                "thinking_budget_tokens": 2048,
+                "thinking_level": "medium",
+                "response_mime_type": "application/json",
+                "response_json_schema": {
+                    "type": "object",
+                    "properties": {"status": {"type": "string"}},
+                },
+                "tools": [
+                    {
+                        "name": "lookup_weather",
+                        "description": "Get weather by city",
+                        "parameters_json_schema": {
+                            "type": "object",
+                            "properties": {"city": {"type": "string"}},
+                            "required": ["city"],
+                        },
+                    }
+                ],
+                "function_calling_mode": "any",
+                "allowed_function_names": ["lookup_weather"],
+                "stream_function_call_arguments": True,
+                "include_server_side_tool_invocations": True,
+                "media_resolution": "high",
+                "safety_settings": [
+                    {"category": "harassment", "threshold": "block_medium_and_above"}
+                ],
+            },
+        ) as response:
+            assert response.status_code == 200
+            events = _collect_events(response)
+
+    tool_call_payloads = [payload for event, payload in events if event == "tool_call"]
+    assert tool_call_payloads
+    assert tool_call_payloads[-1]["name"] == "lookup_weather"
+    assert tool_call_payloads[-1]["args"]["city"] == "Ha Noi"
+
+    done_payloads = [payload for event, payload in events if event == "done"]
+    assert done_payloads
+    done_payload = done_payloads[-1]
+    assert done_payload["text"] == '{"status":"ok"}'
+    assert done_payload["tool_calls"]
+    assert done_payload["tool_calls"][-1]["name"] == "lookup_weather"
+
+
+def test_chat_stream_accepts_attachment_only_user_message(monkeypatch) -> None:
+    def fake_stream_chat_text(messages, cfg):
+        assert messages[-1]["text"] == ""
+        attachments = messages[-1].get("attachments", [])
+        assert len(attachments) == 1
+        assert attachments[0]["content_type"] == "audio/wav"
+        yield "audio processed"
+
+    monkeypatch.setattr("app.api.routes.chat.stream_chat_text", fake_stream_chat_text)
+
+    with TestClient(app) as client:
+        headers = _admin_headers()
+        with client.stream(
+            "POST",
+            "/api/v1/chat/stream",
+            headers=headers,
+            json={
+                "messages": [
+                    {
+                        "role": "user",
+                        "attachments": [
+                            {
+                                "file_name": "sample.wav",
+                                "content_type": "audio/wav",
+                                "data_base64": "aGVsbG8=",
+                            }
+                        ],
+                    }
+                ]
+            },
+        ) as response:
+            assert response.status_code == 200
+            events = _collect_events(response)
+
+    done_payloads = [payload for event, payload in events if event == "done"]
+    assert done_payloads
+    assert done_payloads[-1]["text"] == "audio processed"

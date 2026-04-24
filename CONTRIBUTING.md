@@ -13,7 +13,8 @@
 1. Keep PR focused and small.
 2. Add or update tests for changed behavior.
 3. Update CHANGELOG.md when behavior is user-visible.
-4. Ensure local quality gate passes before requesting review.
+4. Update docs/ai-worklog.md for every code change (include date, scope, and verification).
+5. Ensure local quality gate passes before requesting review.
 
 ## Required CI Checks
 
@@ -51,7 +52,8 @@ Use conventional commit prefixes:
 2. Configure .env from .env.example.
 3. Run backend and verify health endpoints.
 4. Run scripts/quality_gate.ps1.
-5. Open PR with clear summary and test evidence.
+5. Verify scripts/validate_change_docs.py passes (CHANGELOG.md + docs/ai-worklog.md updated when code changes).
+6. Open PR with clear summary and test evidence.
 
 ## Release Preparation
 

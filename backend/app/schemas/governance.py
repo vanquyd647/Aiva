@@ -1,7 +1,7 @@
 """Schema models for admin governance and usage dashboards."""
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -73,3 +73,31 @@ class UsageOverviewOut(BaseModel):
     users_over_warning: int
     users_exceeded: int
     top_users: list[UsageTopUserOut]
+
+
+class GeminiKeyStatusOut(BaseModel):
+    provider: str
+    has_active_key: bool
+    source: Literal["database", "env", "none"]
+    fingerprint: str | None = None
+    key_version: int | None = None
+    rotated_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class GeminiKeyRotateIn(BaseModel):
+    api_key: str = Field(min_length=20, max_length=512)
+    reason: str | None = Field(default=None, max_length=255)
+    dry_run: bool = False
+    validate_with_provider: bool = False
+    test_model: str | None = Field(default=None, max_length=120)
+
+
+class GeminiKeyRotateOut(BaseModel):
+    status: Literal["ok", "dry-run"]
+    provider: str
+    fingerprint: str
+    key_version: int | None = None
+    rotated_at: datetime | None = None
+    dry_run_validated: bool = False
+    message: str

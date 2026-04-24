@@ -225,6 +225,39 @@ class ApiClient:
             raise ValueError(self._error_text(resp))
         return resp.json()
 
+    def get_gemini_key_status(self) -> dict:
+        resp = requests.get(
+            f"{self.base_url}/api/v1/admin/gemini-key",
+            headers=self._headers(),
+            timeout=20,
+        )
+        if resp.status_code >= 400:
+            raise ValueError(self._error_text(resp))
+        return resp.json()
+
+    def rotate_gemini_key(
+        self,
+        *,
+        api_key: str,
+        reason: str,
+        dry_run: bool,
+        validate_with_provider: bool,
+    ) -> dict:
+        resp = requests.post(
+            f"{self.base_url}/api/v1/admin/gemini-key",
+            json={
+                "api_key": api_key,
+                "reason": reason,
+                "dry_run": dry_run,
+                "validate_with_provider": validate_with_provider,
+            },
+            headers=self._headers(),
+            timeout=30,
+        )
+        if resp.status_code >= 400:
+            raise ValueError(self._error_text(resp))
+        return resp.json()
+
 
 class AdminApp(ctk.CTk):
     def __init__(self) -> None:
@@ -467,8 +500,9 @@ class AdminApp(ctk.CTk):
         actions_tab = tabs.add(self.tr("admin_tab_actions"))
         governance_tab = tabs.add(self.tr("admin_tab_governance"))
         usage_tab = tabs.add(self.tr("admin_tab_usage"))
+        keys_tab = tabs.add(self.tr("admin_tab_api_keys"))
 
-        for tab in (create_tab, update_tab, security_tab, actions_tab, governance_tab, usage_tab):
+        for tab in (create_tab, update_tab, security_tab, actions_tab, governance_tab, usage_tab, keys_tab):
             tab.grid_columnconfigure(0, weight=1)
 
         self._build_create_tab(create_tab)
@@ -477,6 +511,7 @@ class AdminApp(ctk.CTk):
         self._build_actions_tab(actions_tab)
         self._build_governance_tab(governance_tab)
         self._build_usage_tab(usage_tab)
+        self._build_keys_tab(keys_tab)
 
         bottom = ctk.CTkFrame(self, corner_radius=10)
         bottom.grid(row=2, column=0, sticky="ew", padx=16, pady=(0, 16))
@@ -521,6 +556,11 @@ class AdminApp(ctk.CTk):
             self.refresh_governance_btn,
             self.revoke_session_btn,
             self.revoke_user_sessions_btn,
+            self.gemini_key_entry,
+            self.gemini_key_reason_entry,
+            self.gemini_key_refresh_btn,
+            self.gemini_key_test_btn,
+            self.gemini_key_rotate_btn,
         ]
 
     def _bind_shortcuts(self) -> None:
@@ -805,6 +845,84 @@ class AdminApp(ctk.CTk):
         self.usage_top_users_box.insert("1.0", self.tr("admin_usage_no_data"))
         self.usage_top_users_box.configure(state="disabled")
 
+    def _build_keys_tab(self, parent: ctk.CTkFrame) -> None:
+        self.gemini_key_value_var = ctk.StringVar(value="")
+        self.gemini_key_reason_var = ctk.StringVar(value="")
+        self.gemini_key_validate_var = tk.BooleanVar(value=True)
+
+        ctk.CTkLabel(
+            parent,
+            text=self.tr("admin_gemini_key_title"),
+            font=ctk.CTkFont(size=16, weight="bold"),
+        ).grid(row=0, column=0, sticky="w", padx=12, pady=(12, 8))
+
+        self.gemini_key_status_lbl = ctk.CTkLabel(
+            parent,
+            text=self.tr("admin_gemini_key_status_default"),
+            justify="left",
+            anchor="w",
+        )
+        self.gemini_key_status_lbl.grid(row=1, column=0, sticky="ew", padx=12, pady=(0, 8))
+
+        ctk.CTkLabel(parent, text=self.tr("admin_gemini_key_field")).grid(
+            row=2, column=0, sticky="w", padx=12
+        )
+        self.gemini_key_entry = ctk.CTkEntry(
+            parent,
+            textvariable=self.gemini_key_value_var,
+            show="*",
+            placeholder_text=self.tr("admin_gemini_key_placeholder"),
+        )
+        self.gemini_key_entry.grid(row=3, column=0, sticky="ew", padx=12, pady=(0, 8))
+
+        ctk.CTkLabel(parent, text=self.tr("admin_gemini_reason_field")).grid(
+            row=4, column=0, sticky="w", padx=12
+        )
+        self.gemini_key_reason_entry = ctk.CTkEntry(
+            parent,
+            textvariable=self.gemini_key_reason_var,
+            placeholder_text=self.tr("admin_gemini_reason_placeholder"),
+        )
+        self.gemini_key_reason_entry.grid(row=5, column=0, sticky="ew", padx=12, pady=(0, 8))
+
+        self.gemini_key_validate_switch = ctk.CTkSwitch(
+            parent,
+            text=self.tr("admin_gemini_validate_toggle"),
+            variable=self.gemini_key_validate_var,
+            onvalue=True,
+            offvalue=False,
+        )
+        self.gemini_key_validate_switch.grid(row=6, column=0, sticky="w", padx=12, pady=(2, 8))
+
+        button_row = ctk.CTkFrame(parent, fg_color="transparent")
+        button_row.grid(row=7, column=0, sticky="ew", padx=12, pady=(0, 12))
+
+        self.gemini_key_refresh_btn = ctk.CTkButton(
+            button_row,
+            width=120,
+            text=self.tr("admin_gemini_refresh"),
+            command=self._refresh_gemini_key_status,
+        )
+        self.gemini_key_refresh_btn.pack(side="left", padx=(0, 8))
+
+        self.gemini_key_test_btn = ctk.CTkButton(
+            button_row,
+            width=140,
+            text=self.tr("admin_gemini_test"),
+            command=self._test_gemini_key,
+        )
+        self.gemini_key_test_btn.pack(side="left", padx=(0, 8))
+
+        self.gemini_key_rotate_btn = ctk.CTkButton(
+            button_row,
+            width=140,
+            text=self.tr("admin_gemini_rotate"),
+            fg_color="#8B0000",
+            hover_color="#A40000",
+            command=self._rotate_gemini_key,
+        )
+        self.gemini_key_rotate_btn.pack(side="left")
+
     def _set_feedback(self, message: str, tone: str) -> None:
         palette = {
             "info": (("#ececec", "#2f2f2f"), ("#444444", "#d8d8d8")),
@@ -848,6 +966,19 @@ class AdminApp(ctk.CTk):
                     "alert_level": "ok",
                 },
             )
+            self._render_gemini_key_status(
+                {
+                    "provider": "gemini",
+                    "has_active_key": False,
+                    "source": "none",
+                    "fingerprint": None,
+                    "key_version": None,
+                    "rotated_at": None,
+                    "updated_at": None,
+                }
+            )
+            self.gemini_key_value_var.set("")
+            self.gemini_key_reason_var.set("")
             self.auth_status_lbl.configure(
                 text=self.tr("admin_not_authenticated"),
                 fg_color=("#fff1d6", "#4a3520"),
@@ -1142,6 +1273,33 @@ class AdminApp(ctk.CTk):
         self.usage_top_users_box.insert("1.0", "\n".join(lines))
         self.usage_top_users_box.configure(state="disabled")
 
+    def _render_gemini_key_status(self, payload: dict) -> None:
+        provider = payload.get("provider", "gemini")
+        source = payload.get("source", "none")
+        has_active_key = bool(payload.get("has_active_key", False))
+        fingerprint = payload.get("fingerprint") or "-"
+        key_version = payload.get("key_version")
+        rotated_at = self._fmt_dt(payload.get("rotated_at"))
+
+        if has_active_key:
+            version_text = str(key_version) if key_version is not None else "-"
+            text = self.tr(
+                "admin_gemini_key_status_ready",
+                provider=provider,
+                source=source,
+                fingerprint=fingerprint,
+                version=version_text,
+                rotated_at=rotated_at,
+            )
+            fg_color = ("#d9f7e8", "#1e3b2f")
+            text_color = ("#115a35", "#93f0c3")
+        else:
+            text = self.tr("admin_gemini_key_status_missing", provider=provider)
+            fg_color = ("#ffe7cc", "#4f3720")
+            text_color = ("#8a4d00", "#ffbf75")
+
+        self.gemini_key_status_lbl.configure(text=text, fg_color=fg_color, text_color=text_color)
+
     def _apply_usage_alert(self, usage_payload: dict, my_usage_payload: dict) -> None:
         my_level = str(my_usage_payload.get("alert_level", "ok"))
         exceeded_users = int(usage_payload.get("users_exceeded", 0) or 0)
@@ -1153,6 +1311,95 @@ class AdminApp(ctk.CTk):
 
         if my_level == "warning" or warning_users > 0:
             self._set_feedback(self.tr("admin_usage_alert_warning"), "warning")
+
+    def _refresh_gemini_key_status(self) -> None:
+        if not self._logged_in:
+            return
+
+        def job():
+            return self.client.get_gemini_key_status()
+
+        def success(payload: dict) -> None:
+            self._render_gemini_key_status(payload)
+
+        self._run_bg(
+            fn=job,
+            on_success=success,
+            success_message=self.tr("admin_gemini_refreshed"),
+            busy_message=self.tr("admin_gemini_refreshing"),
+        )
+
+    def _test_gemini_key(self) -> None:
+        raw_key = self.gemini_key_value_var.get().strip()
+        if len(raw_key) < 20:
+            msgbox.showwarning(self.tr("admin_warning_title"), self.tr("admin_gemini_invalid_key"))
+            return
+
+        reason = self.gemini_key_reason_var.get().strip()
+        validate_with_provider = bool(self.gemini_key_validate_var.get())
+
+        def job():
+            return self.client.rotate_gemini_key(
+                api_key=raw_key,
+                reason=reason,
+                dry_run=True,
+                validate_with_provider=validate_with_provider,
+            )
+
+        def success(payload: dict) -> None:
+            fingerprint = payload.get("fingerprint", "-")
+            self._set_feedback(
+                self.tr("admin_gemini_test_ok", fingerprint=fingerprint),
+                "success",
+            )
+
+        self._run_bg(
+            fn=job,
+            on_success=success,
+            busy_message=self.tr("admin_gemini_testing"),
+        )
+
+    def _rotate_gemini_key(self) -> None:
+        raw_key = self.gemini_key_value_var.get().strip()
+        if len(raw_key) < 20:
+            msgbox.showwarning(self.tr("admin_warning_title"), self.tr("admin_gemini_invalid_key"))
+            return
+
+        reason = self.gemini_key_reason_var.get().strip()
+        validate_with_provider = bool(self.gemini_key_validate_var.get())
+
+        if not msgbox.askyesno(
+            self.tr("admin_confirm_title"),
+            self.tr("admin_gemini_rotate_confirm"),
+        ):
+            return
+
+        def job():
+            rotate_payload = self.client.rotate_gemini_key(
+                api_key=raw_key,
+                reason=reason,
+                dry_run=False,
+                validate_with_provider=validate_with_provider,
+            )
+            status_payload = self.client.get_gemini_key_status()
+            return {"rotate": rotate_payload, "status": status_payload}
+
+        def success(payload: dict) -> None:
+            self.gemini_key_value_var.set("")
+            self._render_gemini_key_status(payload["status"])
+            self._set_feedback(
+                self.tr(
+                    "admin_gemini_rotated",
+                    version=payload["rotate"].get("key_version", "-"),
+                ),
+                "success",
+            )
+
+        self._run_bg(
+            fn=job,
+            on_success=success,
+            busy_message=self.tr("admin_gemini_rotating"),
+        )
 
     def _refresh_governance(self) -> None:
         if not self._logged_in:
@@ -1167,16 +1414,19 @@ class AdminApp(ctk.CTk):
             )
             usage_payload = self.client.get_usage_overview(page=1, page_size=30)
             my_usage_payload = self.client.get_my_usage()
+            gemini_key_payload = self.client.get_gemini_key_status()
             return {
                 "sessions": sessions_payload,
                 "audit": audit_payload,
                 "usage": usage_payload,
                 "my_usage": my_usage_payload,
+                "gemini_key": gemini_key_payload,
             }
 
         def success(payload: dict) -> None:
             self._render_governance(payload["sessions"], payload["audit"])
             self._render_usage(payload["usage"], payload["my_usage"])
+            self._render_gemini_key_status(payload["gemini_key"])
             self._apply_usage_alert(payload["usage"], payload["my_usage"])
 
         self._run_bg(
@@ -1324,6 +1574,7 @@ class AdminApp(ctk.CTk):
             )
             usage_payload = self.client.get_usage_overview(page=1, page_size=30)
             my_usage_payload = self.client.get_my_usage()
+            gemini_key_payload = self.client.get_gemini_key_status()
             return {
                 "auth": auth_payload,
                 "health": health_payload,
@@ -1333,6 +1584,7 @@ class AdminApp(ctk.CTk):
                 "audit": audit_payload,
                 "usage": usage_payload,
                 "my_usage": my_usage_payload,
+                "gemini_key": gemini_key_payload,
             }
 
         def success(payload: dict) -> None:
@@ -1348,6 +1600,7 @@ class AdminApp(ctk.CTk):
             self._render_stats(payload["stats"])
             self._render_governance(payload["sessions"], payload["audit"])
             self._render_usage(payload["usage"], payload["my_usage"])
+            self._render_gemini_key_status(payload["gemini_key"])
             self._apply_usage_alert(payload["usage"], payload["my_usage"])
 
         self.page = 1
@@ -1379,6 +1632,7 @@ class AdminApp(ctk.CTk):
             )
             usage_payload = self.client.get_usage_overview(page=1, page_size=30)
             my_usage_payload = self.client.get_my_usage()
+            gemini_key_payload = self.client.get_gemini_key_status()
             return {
                 "users": users_payload,
                 "stats": stats_payload,
@@ -1387,6 +1641,7 @@ class AdminApp(ctk.CTk):
                 "audit": audit_payload,
                 "usage": usage_payload,
                 "my_usage": my_usage_payload,
+                "gemini_key": gemini_key_payload,
             }
 
         def success(payload: dict) -> None:
@@ -1395,6 +1650,7 @@ class AdminApp(ctk.CTk):
             self._update_health_badge(payload["health"])
             self._render_governance(payload["sessions"], payload["audit"])
             self._render_usage(payload["usage"], payload["my_usage"])
+            self._render_gemini_key_status(payload["gemini_key"])
             self._apply_usage_alert(payload["usage"], payload["my_usage"])
 
         self._run_bg(

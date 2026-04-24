@@ -45,33 +45,75 @@ def _build_citation_context(citations: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _apply_thinking_prompt(system_prompt: str, enable_thinking: bool) -> str:
+    if not enable_thinking:
+        return system_prompt
+    if "<|think|>" in system_prompt:
+        return system_prompt
+    if not system_prompt.strip():
+        return "<|think|>"
+    return f"<|think|>\n{system_prompt}"
+
+
 @router.post("/stream")
 def chat_stream(
     payload: ChatStreamRequest,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
+    system_prompt = _apply_thinking_prompt(payload.system_prompt, payload.enable_thinking)
+
     cfg = {
         "model": payload.model,
         "temperature": payload.temperature,
         "top_p": payload.top_p,
         "top_k": payload.top_k,
         "max_output_tokens": payload.max_output_tokens,
-        "system_prompt": payload.system_prompt,
+        "candidate_count": payload.candidate_count,
+        "stop_sequences": payload.stop_sequences,
+        "seed": payload.seed,
+        "presence_penalty": payload.presence_penalty,
+        "frequency_penalty": payload.frequency_penalty,
+        "system_prompt": system_prompt,
+        "response_mime_type": payload.response_mime_type,
+        "response_schema": payload.response_schema,
+        "response_json_schema": payload.response_json_schema,
+        "tools": [item.model_dump() for item in payload.tools],
+        "function_calling_mode": payload.function_calling_mode,
+        "allowed_function_names": payload.allowed_function_names,
+        "stream_function_call_arguments": payload.stream_function_call_arguments,
+        "include_server_side_tool_invocations": payload.include_server_side_tool_invocations,
+        "include_thoughts": payload.include_thoughts,
+        "thinking_budget_tokens": payload.thinking_budget_tokens,
+        "thinking_level": payload.thinking_level,
+        "media_resolution": payload.media_resolution,
+        "safety_settings": [item.model_dump() for item in payload.safety_settings],
     }
     messages = [item.model_dump() for item in payload.messages]
 
-    last_user_text = ""
+    last_user_message: dict | None = None
     for msg in reversed(messages):
         if msg.get("role") == "user":
-            last_user_text = msg.get("text", "").strip()
+            last_user_message = msg
             break
 
-    if not last_user_text:
+    if last_user_message is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="At least one user message is required",
         )
+
+    last_user_text = str(last_user_message.get("text", "")).strip()
+    last_user_attachments = last_user_message.get("attachments") or []
+    if not last_user_text and not last_user_attachments:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The latest user message must include text or attachments",
+        )
+
+    persisted_user_content = last_user_text
+    if not persisted_user_content and last_user_attachments:
+        persisted_user_content = f"[Attachment-only input: {len(last_user_attachments)} item(s)]"
 
     usage_snapshot = user_usage_summary(db, user_id=current_user.id, role=current_user.role)
     if will_exceed_quota(usage_snapshot):
@@ -129,7 +171,7 @@ def chat_stream(
     user_message = Message(
         conversation_id=conversation.id,
         role="user",
-        content=last_user_text,
+        content=persisted_user_content,
         status="final",
     )
     db.add(user_message)
@@ -138,6 +180,7 @@ def chat_stream(
 
     def event_stream():
         full_text = ""
+        tool_calls: list[dict] = []
         prompt_token_estimate = sum(
             estimate_tokens(str(item.get("text", "")))
             for item in messages
@@ -152,14 +195,24 @@ def chat_stream(
             },
         )
         try:
-            for chunk in stream_chat_text(messages=messages, cfg=cfg):
-                full_text += chunk
-                yield _sse_event("chunk", {"text": chunk})
+            for stream_item in stream_chat_text(messages=messages, cfg=cfg):
+                if isinstance(stream_item, str):
+                    full_text += stream_item
+                    yield _sse_event("chunk", {"text": stream_item})
+                    continue
+
+                if isinstance(stream_item, dict) and stream_item.get("type") == "tool_call":
+                    tool_calls.append(stream_item)
+                    yield _sse_event("tool_call", stream_item)
+
+            assistant_content = full_text
+            if not assistant_content and tool_calls:
+                assistant_content = json.dumps({"tool_calls": tool_calls}, ensure_ascii=False)
 
             assistant_message = Message(
                 conversation_id=conversation.id,
                 role="assistant",
-                content=full_text,
+                content=assistant_content,
                 status="final",
             )
             db.add(assistant_message)
@@ -194,6 +247,7 @@ def chat_stream(
                     "conversation_id": conversation.id,
                     "assistant_message_id": assistant_message.id,
                     "citations": citations,
+                    "tool_calls": tool_calls,
                 },
             )
         except Exception as exc:

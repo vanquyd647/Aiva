@@ -34,6 +34,14 @@ Use this checklist before creating a release tag.
 - ...
 ```
 
+6. Update `docs/ai-worklog.md` with final release preparation actions.
+
+7. Validate docs guard before tagging:
+
+```powershell
+python scripts/validate_change_docs.py
+```
+
 ## Tag and Release
 
 1. Create tag:

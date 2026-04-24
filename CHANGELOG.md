@@ -80,6 +80,7 @@ All notable changes to this project will be documented in this file.
   - Normalized SQLAlchemy relationship typing with forward-reference safe annotations.
   - Removed unused imports and aligned formatting to Black conventions.
   - Quality gate is green (`ruff`, `black --check`, `pytest`, `compileall`).
+- Final integration pass aligned env templates, route/service wiring, and tests into one consolidated commit-ready state.
 
 ## [0.2.0] - 2026-04-23
 

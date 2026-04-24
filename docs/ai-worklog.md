@@ -70,3 +70,6 @@ Track every AI-assisted code change here. This file is mandatory for code-change
 	- `python -m compileall` smoke passed
 - Follow-up rerun after removing unused `ui/__init__.py` also passed with the same gate results.
 - Final rerun after repository-wide stale-doc audit and cleanup also passed with identical results.
+
+### Final Integration Pass
+- Consolidated remaining backend/desktop/env-template/test changes into a single full-repo commit scope.

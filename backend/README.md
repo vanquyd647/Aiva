@@ -7,6 +7,8 @@ Secure API service for authentication, user management, and operations.
 - JWT authentication with role-based access control (admin/user)
 - Password hashing with bcrypt
 - User CRUD for admin panel
+- Secure Gemini API key lifecycle management (status, dry-run validation, rotation)
+- Encrypted provider secret storage with runtime key refresh
 - Redis cache with in-memory fallback
 - Health probes for deployment orchestration
 - Security headers and login rate limiting
@@ -100,3 +102,21 @@ On first startup, backend seeds an admin user from env vars:
 - `INITIAL_ADMIN_PASSWORD`
 
 Change these values before production deployment.
+
+## Gemini Key Management
+
+- Endpoint: `GET/POST /api/v1/admin/gemini-key`
+- Admins can:
+	- View current key source and masked fingerprint.
+	- Dry-run validate a new key without persisting it.
+	- Rotate the active key with audit trail.
+- Runtime behavior:
+	- Chat service reloads credentials after rotation.
+	- No backend restart required.
+
+Recommended environment variables:
+
+- `GEMINI_SECRET_ENCRYPTION_KEY` (dedicated encryption secret)
+- `GEMINI_FALLBACK_ENV_API_KEY_ENABLED`
+- `GEMINI_VALIDATION_MODEL`
+- `RATE_LIMIT_GEMINI_KEY_ROTATE_PER_MINUTE`

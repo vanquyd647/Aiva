@@ -916,16 +916,16 @@ class App(ctk.CTk):
 
     def _to_runtime_attachment_payload(self, attachment: dict) -> dict | None:
         content_type = str(attachment.get("content_type", "")).strip().lower()
-        image_base64 = str(attachment.get("image_base64", "")).strip()
-        if not content_type.startswith("image/"):
+        inline_data_base64 = str(attachment.get("inline_data_base64", "")).strip()
+        if not self._is_runtime_media_attachment(content_type):
             return None
-        if not image_base64:
+        if not inline_data_base64:
             return None
 
         return {
             "file_name": str(attachment.get("file_name", "image")),
             "content_type": content_type,
-            "data_base64": image_base64,
+            "data_base64": inline_data_base64,
         }
 
     def _request_assistant_reply(
@@ -1098,7 +1098,10 @@ class App(ctk.CTk):
         selected_paths = filedialog.askopenfilenames(
             title=self.tr("dialog_pick_attachments_title"),
             filetypes=[
-                (self.tr("dialog_supported_files"), "*.txt *.md *.json *.csv *.xml *.yml *.yaml *.log *.py *.js *.ts *.html *.css *.png *.jpg *.jpeg *.webp *.gif *.bmp *.pdf"),
+                (
+                    self.tr("dialog_supported_files"),
+                    "*.txt *.md *.json *.csv *.xml *.yml *.yaml *.log *.py *.js *.ts *.html *.css *.png *.jpg *.jpeg *.webp *.gif *.bmp *.pdf *.mp3 *.wav *.m4a *.aac *.ogg *.flac *.mp4 *.mov *.webm *.mkv",
+                ),
                 (self.tr("dialog_all_files"), "*.*"),
             ],
         )
@@ -1160,14 +1163,14 @@ class App(ctk.CTk):
         if len(preview_text) > ATTACHMENT_PREVIEW_CHARS:
             preview_text = preview_text[:ATTACHMENT_PREVIEW_CHARS] + "\n...[truncated]"
 
-        image_base64 = self._encode_inline_image_base64(path, guessed_type)
+        inline_data_base64 = self._encode_inline_attachment_base64(path, guessed_type)
 
         return {
             "file_name": payload.get("file_name") or path.name,
             "content_type": payload.get("content_type") or guessed_type,
             "size_bytes": int(payload.get("size_bytes") or 0),
             "preview_text": preview_text,
-            "image_base64": image_base64,
+            "inline_data_base64": inline_data_base64,
         }
 
     def _build_local_attachment(self, file_path: str) -> dict:
@@ -1184,18 +1187,18 @@ class App(ctk.CTk):
         if self._is_text_attachment(content_type, path.suffix.lower()):
             preview_text = self._extract_local_preview(path)
 
-        image_base64 = self._encode_inline_image_base64(path, content_type)
+        inline_data_base64 = self._encode_inline_attachment_base64(path, content_type)
 
         return {
             "file_name": path.name,
             "content_type": content_type,
             "size_bytes": size_bytes,
             "preview_text": preview_text,
-            "image_base64": image_base64,
+            "inline_data_base64": inline_data_base64,
         }
 
-    def _encode_inline_image_base64(self, path: Path, content_type: str) -> str:
-        if not content_type.startswith("image/"):
+    def _encode_inline_attachment_base64(self, path: Path, content_type: str) -> str:
+        if not self._is_runtime_media_attachment(content_type):
             return ""
 
         raw = path.read_bytes()
@@ -1203,6 +1206,11 @@ class App(ctk.CTk):
             raise RuntimeError(self.tr("dialog_attachment_too_large"))
 
         return base64.b64encode(raw).decode("ascii")
+
+    def _is_runtime_media_attachment(self, content_type: str) -> bool:
+        if content_type.startswith(("image/", "audio/", "video/")):
+            return True
+        return content_type == "application/pdf"
 
     def _is_text_attachment(self, content_type: str, suffix: str) -> bool:
         if content_type.startswith("text/"):

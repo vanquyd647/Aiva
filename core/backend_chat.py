@@ -43,7 +43,30 @@ def send_message(
             "top_p": cfg.get("top_p", 0.95),
             "top_k": cfg.get("top_k", 64),
             "max_output_tokens": cfg.get("max_output_tokens", 8192),
+            "stop_sequences": cfg.get("stop_sequences", []),
+            "candidate_count": cfg.get("candidate_count", 1),
+            "seed": cfg.get("seed"),
+            "presence_penalty": cfg.get("presence_penalty"),
+            "frequency_penalty": cfg.get("frequency_penalty"),
             "system_prompt": cfg.get("system_prompt", ""),
+            "enable_thinking": bool(cfg.get("enable_thinking", False)),
+            "include_thoughts": bool(cfg.get("include_thoughts", False)),
+            "thinking_budget_tokens": cfg.get("thinking_budget_tokens"),
+            "thinking_level": cfg.get("thinking_level"),
+            "response_mime_type": cfg.get("response_mime_type"),
+            "response_schema": cfg.get("response_schema"),
+            "response_json_schema": cfg.get("response_json_schema"),
+            "tools": cfg.get("tools", []),
+            "function_calling_mode": cfg.get("function_calling_mode"),
+            "allowed_function_names": cfg.get("allowed_function_names", []),
+            "stream_function_call_arguments": bool(
+                cfg.get("stream_function_call_arguments", False)
+            ),
+            "include_server_side_tool_invocations": bool(
+                cfg.get("include_server_side_tool_invocations", False)
+            ),
+            "media_resolution": cfg.get("media_resolution"),
+            "safety_settings": cfg.get("safety_settings", []),
         }
 
         try:
@@ -102,9 +125,18 @@ def send_message(
                         citations = event_data.get("citations")
                         if isinstance(citations, list):
                             cfg["_backend_last_citations"] = citations
+                        tool_calls = event_data.get("tool_calls")
+                        if isinstance(tool_calls, list):
+                            cfg["_backend_last_tool_calls"] = tool_calls
                         final_text = str(event_data.get("text", full_text))
                         on_done(final_text)
                         return
+                    elif current_event == "tool_call":
+                        collected = cfg.get("_backend_last_tool_calls")
+                        if not isinstance(collected, list):
+                            collected = []
+                        collected.append(event_data)
+                        cfg["_backend_last_tool_calls"] = collected
                     elif current_event == "error":
                         on_error(str(event_data.get("message", "Streaming failed")))
                         return

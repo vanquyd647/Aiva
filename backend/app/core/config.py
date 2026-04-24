@@ -36,8 +36,13 @@ class Settings(BaseSettings):
 
     ALLOW_PUBLIC_REGISTRATION: bool = False
     RATE_LIMIT_LOGIN_PER_MINUTE: int = 8
+    RATE_LIMIT_GEMINI_KEY_ROTATE_PER_MINUTE: int = 4
 
     USER_LIST_CACHE_TTL_SECONDS: int = 30
+
+    GEMINI_SECRET_ENCRYPTION_KEY: str | None = None
+    GEMINI_FALLBACK_ENV_API_KEY_ENABLED: bool = True
+    GEMINI_VALIDATION_MODEL: str = "gemini-2.0-flash-lite"
 
     USAGE_WINDOW_DAYS: int = 30
     QUOTA_ALERT_THRESHOLD_RATIO: float = 0.8

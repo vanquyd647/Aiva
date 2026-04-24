@@ -8,7 +8,9 @@ import uuid
 from fastapi.testclient import TestClient
 
 from app.core.config import settings
+from app.db.session import SessionLocal
 from app.main import app
+from app.models.provider_secret import ProviderSecret
 
 
 def _login_admin(client: TestClient) -> dict:
@@ -40,6 +42,15 @@ def _collect_events(response) -> list[tuple[str | None, dict]]:
             payload = json.loads(line.split(":", 1)[1].strip())
             events.append((current_event, payload))
     return events
+
+
+def _clear_provider_secrets() -> None:
+    db = SessionLocal()
+    try:
+        db.query(ProviderSecret).delete()
+        db.commit()
+    finally:
+        db.close()
 
 
 def test_admin_can_revoke_session_and_token_stops_working() -> None:
@@ -145,3 +156,106 @@ def test_admin_actions_are_present_in_audit_log() -> None:
         assert any(
             item["action"] == "users.create" and item["status"] == "success" for item in items
         )
+
+
+def test_gemini_key_dry_run_does_not_persist(monkeypatch) -> None:
+    old_fallback = settings.GEMINI_FALLBACK_ENV_API_KEY_ENABLED
+    settings.GEMINI_FALLBACK_ENV_API_KEY_ENABLED = False
+    _clear_provider_secrets()
+    monkeypatch.setattr(
+        "app.services.admin_gemini_keys.validate_gemini_api_key",
+        lambda api_key, model: (True, None),
+    )
+
+    try:
+        with TestClient(app) as client:
+            auth_payload = _login_admin(client)
+            headers = {"Authorization": f"Bearer {auth_payload['access_token']}"}
+
+            response = client.post(
+                "/api/v1/admin/gemini-key",
+                headers=headers,
+                json={
+                    "api_key": "AIzaSyDryRunOnlyKey123456789012345678",
+                    "reason": "dry run check",
+                    "dry_run": True,
+                    "validate_with_provider": True,
+                },
+            )
+            assert response.status_code == 200
+            body = response.json()
+            assert body["status"] == "dry-run"
+            assert body["dry_run_validated"] is True
+
+            status_response = client.get("/api/v1/admin/gemini-key", headers=headers)
+            assert status_response.status_code == 200
+            status_payload = status_response.json()
+            assert status_payload["has_active_key"] is False
+            assert status_payload["source"] == "none"
+    finally:
+        settings.GEMINI_FALLBACK_ENV_API_KEY_ENABLED = old_fallback
+
+
+def test_gemini_key_rotation_persists_and_resets_client(monkeypatch) -> None:
+    old_fallback = settings.GEMINI_FALLBACK_ENV_API_KEY_ENABLED
+    settings.GEMINI_FALLBACK_ENV_API_KEY_ENABLED = False
+    _clear_provider_secrets()
+
+    reset_calls = {"count": 0}
+
+    def _fake_reset_client() -> None:
+        reset_calls["count"] += 1
+
+    monkeypatch.setattr(
+        "app.services.admin_gemini_keys.validate_gemini_api_key",
+        lambda api_key, model: (True, None),
+    )
+    monkeypatch.setattr(
+        "app.services.admin_gemini_keys.reset_chat_stream_client", _fake_reset_client
+    )
+
+    key_value = "AIzaSyRotationKey1234567890123456789012"
+
+    try:
+        with TestClient(app) as client:
+            auth_payload = _login_admin(client)
+            headers = {"Authorization": f"Bearer {auth_payload['access_token']}"}
+
+            rotate_response = client.post(
+                "/api/v1/admin/gemini-key",
+                headers=headers,
+                json={
+                    "api_key": key_value,
+                    "reason": "scheduled rotation",
+                    "dry_run": False,
+                    "validate_with_provider": False,
+                },
+            )
+            assert rotate_response.status_code == 200
+            rotate_payload = rotate_response.json()
+            assert rotate_payload["status"] == "ok"
+            assert rotate_payload["key_version"] >= 1
+            assert reset_calls["count"] == 1
+
+            status_response = client.get("/api/v1/admin/gemini-key", headers=headers)
+            assert status_response.status_code == 200
+            status_payload = status_response.json()
+            assert status_payload["has_active_key"] is True
+            assert status_payload["source"] == "database"
+            assert status_payload["key_version"] == rotate_payload["key_version"]
+            assert status_payload["fingerprint"] == rotate_payload["fingerprint"]
+
+            audit_response = client.get(
+                "/api/v1/admin/audit",
+                headers=headers,
+                params={"action": "admin.gemini_key.rotate", "page": 1, "page_size": 20},
+            )
+            assert audit_response.status_code == 200
+            items = audit_response.json()["items"]
+            assert items
+            assert any(item["status"] == "success" for item in items)
+            for item in items:
+                details = json.dumps(item.get("details") or {})
+                assert key_value not in details
+    finally:
+        settings.GEMINI_FALLBACK_ENV_API_KEY_ENABLED = old_fallback
