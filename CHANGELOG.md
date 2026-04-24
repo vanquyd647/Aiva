@@ -79,6 +79,7 @@ All notable changes to this project will be documented in this file.
 - User settings dialog was modernized to tabbed sections and now exposes full Gemma 4 advanced controls (thinking, function-calling, schemas, tools, safety, and media resolution).
 - User chat screen now includes a Gemini-web-style Quick Controls bar (model, temperature, thinking toggle, web citations toggle, tools mode) so common runtime options can be changed without opening Settings.
 - Quick Controls upgraded with phase-2 UX improvements: response-style presets (Balanced/Creative/Precise), one-tap JSON mode toggle, and collapsible advanced row to keep the main chat area cleaner.
+- Quick Controls phase-3 adds task presets (`Code`, `Writing`, `Analysis`) and persists the preferred task preset per user profile (based on backend email) so each user gets their own default behavior.
 - User settings now support backend login to fetch access token directly, with clearer auth-failure prompts and automatic backend-stream disable when token is missing.
 - Fixed Gemini request compatibility by sending `stream_function_call_arguments` only when the installed SDK/API supports the field.
 - User desktop runtime is now hard-locked to backend-only mode (local Gemini route removed from send/attachment/branching flows and backend-stream setting is forced on).

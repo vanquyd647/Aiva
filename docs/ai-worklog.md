@@ -137,3 +137,7 @@ Track every AI-assisted code change here. This file is mandatory for code-change
 	- style presets (`Balanced`, `Creative`, `Precise`) that apply coordinated `temperature/top_p/top_k` bundles,
 	- one-tap JSON response mode toggle (`response_mime_type=application/json`),
 	- collapsible secondary controls row to reduce visual noise and keep chat focus.
+- Added phase-3 task presets in quick controls:
+	- `Code`, `Writing`, `Analysis` presets that apply grouped runtime settings (generation + reasoning/tool defaults) in one click,
+	- `Custom` state auto-tracking when users tweak knobs after selecting a task preset.
+- Added per-user preset persistence via config profile mapping (keyed by backend user email, with local fallback) so preferred task preset is restored per user identity.

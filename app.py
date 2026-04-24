@@ -1172,6 +1172,124 @@ class App(ctk.CTk):
             value: key for key, value in self._quick_style_display_to_value.items()
         }
 
+    def _build_quick_task_maps(self) -> None:
+        self._quick_task_display_to_value = {
+            self.tr("quick_controls_task_code"): "code",
+            self.tr("quick_controls_task_writing"): "writing",
+            self.tr("quick_controls_task_analysis"): "analysis",
+            self.tr("quick_controls_task_custom"): "custom",
+        }
+        self._quick_task_value_to_display = {
+            value: key for key, value in self._quick_task_display_to_value.items()
+        }
+
+    @staticmethod
+    def _quick_task_presets() -> dict[str, dict[str, object]]:
+        return {
+            "code": {
+                "temperature": 0.4,
+                "top_p": 0.8,
+                "top_k": 40,
+                "enable_thinking": True,
+                "use_web_citations": False,
+                "function_calling_mode": "auto",
+                "response_mime_type": "text/plain",
+            },
+            "writing": {
+                "temperature": 1.25,
+                "top_p": 1.0,
+                "top_k": 96,
+                "enable_thinking": False,
+                "use_web_citations": False,
+                "function_calling_mode": None,
+                "response_mime_type": "text/plain",
+            },
+            "analysis": {
+                "temperature": 0.65,
+                "top_p": 0.92,
+                "top_k": 56,
+                "enable_thinking": True,
+                "use_web_citations": True,
+                "function_calling_mode": "auto",
+                "response_mime_type": "text/plain",
+            },
+        }
+
+    @staticmethod
+    def _normalize_response_mime_token(value: object) -> str:
+        normalized = str(value or "").strip().lower()
+        if normalized in {"text/plain", "application/json"}:
+            return normalized
+        return "unset"
+
+    def _quick_user_profile_key(self) -> str:
+        email = str(self.cfg.get("backend_user_email", "")).strip().lower()
+        return email or "__local__"
+
+    def _quick_task_preference_map(self) -> dict[str, str]:
+        raw = self.cfg.get("quick_task_preset_by_user")
+        if not isinstance(raw, dict):
+            return {}
+
+        valid_tokens = set(self._quick_task_presets().keys()) | {"custom"}
+        normalized: dict[str, str] = {}
+        for key, value in raw.items():
+            user_key = str(key).strip().lower()
+            token = str(value).strip().lower()
+            if user_key and token in valid_tokens:
+                normalized[user_key] = token
+        return normalized
+
+    def _save_quick_task_preference(self, token: str) -> None:
+        valid_tokens = set(self._quick_task_presets().keys()) | {"custom"}
+        if token not in valid_tokens:
+            token = "custom"
+
+        prefs = self._quick_task_preference_map()
+        prefs[self._quick_user_profile_key()] = token
+        self.cfg["quick_task_preset_by_user"] = prefs
+        self.cfg["quick_task_preset"] = token
+
+    def _resolve_quick_task_token_from_cfg(self) -> str:
+        valid_tokens = set(self._quick_task_presets().keys()) | {"custom"}
+        profile_token = self._quick_task_preference_map().get(self._quick_user_profile_key())
+        if profile_token in valid_tokens:
+            return profile_token
+
+        fallback_token = str(self.cfg.get("quick_task_preset", "")).strip().lower()
+        if fallback_token in valid_tokens:
+            return fallback_token
+
+        return self._infer_quick_task_token_from_current_config()
+
+    def _infer_quick_task_token_from_current_config(self) -> str:
+        current_temp = round(float(self.cfg.get("temperature", 1.0) or 1.0), 2)
+        current_top_p = round(float(self.cfg.get("top_p", 0.95) or 0.95), 2)
+        current_top_k = int(self.cfg.get("top_k", 64) or 64)
+        current_thinking = bool(self.cfg.get("enable_thinking", False))
+        current_web = bool(self.cfg.get("use_web_citations", True))
+        current_mode = self._normalize_function_calling_mode(self.cfg.get("function_calling_mode"))
+        current_mime = self._normalize_response_mime_token(self.cfg.get("response_mime_type"))
+
+        for token, preset in self._quick_task_presets().items():
+            preset_mode = self._normalize_function_calling_mode(preset.get("function_calling_mode"))
+            preset_mime = self._normalize_response_mime_token(preset.get("response_mime_type"))
+            if (
+                abs(current_temp - round(float(preset.get("temperature", 1.0)), 2)) <= 0.01
+                and abs(current_top_p - round(float(preset.get("top_p", 0.95)), 2)) <= 0.01
+                and current_top_k == int(preset.get("top_k", 64))
+                and current_thinking == bool(preset.get("enable_thinking", False))
+                and current_web == bool(preset.get("use_web_citations", True))
+                and current_mode == preset_mode
+                and current_mime == preset_mime
+            ):
+                return token
+
+        return "custom"
+
+    def _mark_quick_task_custom(self) -> None:
+        self._save_quick_task_preference("custom")
+
     @staticmethod
     def _quick_style_presets() -> dict[str, dict[str, float | int]]:
         return {
@@ -1209,9 +1327,22 @@ class App(ctk.CTk):
         else:
             self.quick_style_var.set(display_value)
 
+    def _set_quick_task_control_values(self, values: list[str]) -> None:
+        if hasattr(self, "quick_task_segmented"):
+            self.quick_task_segmented.configure(values=values)
+        else:
+            self.quick_task_menu.configure(values=values)
+
+    def _set_quick_task_control_value(self, display_value: str) -> None:
+        if hasattr(self, "quick_task_segmented"):
+            self.quick_task_segmented.set(display_value)
+        else:
+            self.quick_task_var.set(display_value)
+
     def _build_quick_controls(self, parent: ctk.CTkFrame) -> None:
         self._build_quick_mode_maps()
         self._build_quick_style_maps()
+        self._build_quick_task_maps()
         self._quick_controls_expanded = bool(self.cfg.get("quick_controls_expanded", True))
 
         quickbar = ctk.CTkFrame(
@@ -1311,6 +1442,30 @@ class App(ctk.CTk):
         self.quick_secondary_row = ctk.CTkFrame(quickbar, fg_color="transparent")
         self.quick_secondary_row.pack(fill="x", padx=10, pady=(0, 8))
 
+        ctk.CTkLabel(self.quick_secondary_row, text=self.tr("quick_controls_task")).pack(
+            side="left", padx=(0, 4)
+        )
+        quick_task_values = list(self._quick_task_display_to_value.keys())
+        if hasattr(ctk, "CTkSegmentedButton"):
+            self.quick_task_segmented = ctk.CTkSegmentedButton(
+                self.quick_secondary_row,
+                values=quick_task_values,
+                command=self._on_quick_task_change,
+                width=320,
+                height=28,
+            )
+            self.quick_task_segmented.pack(side="left", padx=(0, 12), pady=6)
+        else:
+            self.quick_task_var = ctk.StringVar(value=quick_task_values[0])
+            self.quick_task_menu = ctk.CTkOptionMenu(
+                self.quick_secondary_row,
+                variable=self.quick_task_var,
+                values=quick_task_values,
+                width=170,
+                command=self._on_quick_task_change,
+            )
+            self.quick_task_menu.pack(side="left", padx=(0, 12), pady=6)
+
         self.quick_thinking_var = tk.BooleanVar(value=bool(self.cfg.get("enable_thinking", False)))
         self.quick_thinking_switch = ctk.CTkSwitch(
             self.quick_secondary_row,
@@ -1390,6 +1545,7 @@ class App(ctk.CTk):
 
         self._build_quick_mode_maps()
         self._build_quick_style_maps()
+        self._build_quick_task_maps()
         self._quick_controls_syncing = True
         try:
             model_values = self._quick_model_values()
@@ -1415,6 +1571,12 @@ class App(ctk.CTk):
             style_token = self._resolve_quick_style_token_from_cfg()
             style_display = self._quick_style_value_to_display.get(style_token, style_values[0])
             self._set_quick_style_control_value(style_display)
+
+            task_values = list(self._quick_task_display_to_value.keys())
+            self._set_quick_task_control_values(task_values)
+            task_token = self._resolve_quick_task_token_from_cfg()
+            task_display = self._quick_task_value_to_display.get(task_token, task_values[-1])
+            self._set_quick_task_control_value(task_display)
 
             mode_token = self._normalize_function_calling_mode(
                 self.cfg.get("function_calling_mode")
@@ -1445,6 +1607,36 @@ class App(ctk.CTk):
         self.cfg["top_p"] = float(preset["top_p"])
         self.cfg["top_k"] = int(preset["top_k"])
         self.cfg["quick_style_preset"] = style_token
+        self._mark_quick_task_custom()
+        self._persist_quick_controls()
+        self._sync_quick_controls_from_cfg()
+
+    def _on_quick_task_change(self, selected: str) -> None:
+        if self._quick_controls_syncing:
+            return
+        task_token = self._quick_task_display_to_value.get(str(selected), "custom")
+        if task_token == "custom":
+            self._save_quick_task_preference("custom")
+            self._persist_quick_controls()
+            return
+
+        preset = self._quick_task_presets().get(task_token)
+        if preset is None:
+            return
+
+        self.cfg["temperature"] = float(preset.get("temperature", self.cfg.get("temperature", 1.0)))
+        self.cfg["top_p"] = float(preset.get("top_p", self.cfg.get("top_p", 0.95)))
+        self.cfg["top_k"] = int(preset.get("top_k", self.cfg.get("top_k", 64)))
+        self.cfg["enable_thinking"] = bool(preset.get("enable_thinking", False))
+        self.cfg["use_web_citations"] = bool(preset.get("use_web_citations", True))
+
+        mode_token = self._normalize_function_calling_mode(preset.get("function_calling_mode"))
+        self.cfg["function_calling_mode"] = None if mode_token == "unset" else mode_token
+
+        mime_token = self._normalize_response_mime_token(preset.get("response_mime_type"))
+        self.cfg["response_mime_type"] = None if mime_token == "unset" else mime_token
+
+        self._save_quick_task_preference(task_token)
         self._persist_quick_controls()
         self._sync_quick_controls_from_cfg()
 
@@ -1464,6 +1656,7 @@ class App(ctk.CTk):
         if self._quick_controls_syncing:
             return
         self.cfg["temperature"] = round(float(self.quick_temp_var.get()), 2)
+        self._mark_quick_task_custom()
         self._persist_quick_controls()
         self._sync_quick_controls_from_cfg()
 
@@ -1482,12 +1675,14 @@ class App(ctk.CTk):
         if self._quick_controls_syncing:
             return
         self.cfg["enable_thinking"] = bool(self.quick_thinking_var.get())
+        self._mark_quick_task_custom()
         self._persist_quick_controls()
 
     def _on_quick_toggle_web_citations(self) -> None:
         if self._quick_controls_syncing:
             return
         self.cfg["use_web_citations"] = bool(self.quick_web_citations_var.get())
+        self._mark_quick_task_custom()
         self._persist_quick_controls()
 
     def _on_quick_toggle_json_mode(self) -> None:
@@ -1497,6 +1692,7 @@ class App(ctk.CTk):
             self.cfg["response_mime_type"] = "application/json"
         else:
             self.cfg["response_mime_type"] = None
+        self._mark_quick_task_custom()
         self._persist_quick_controls()
 
     def _on_quick_function_mode_change(self, selected: str) -> None:
@@ -1504,6 +1700,7 @@ class App(ctk.CTk):
             return
         token = self._quick_mode_display_to_value.get(str(selected), "unset")
         self.cfg["function_calling_mode"] = None if token == "unset" else token
+        self._mark_quick_task_custom()
         self._persist_quick_controls()
 
     def _set_status(self, text: str, kind: str = "ready"):

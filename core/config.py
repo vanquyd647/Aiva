@@ -38,6 +38,10 @@ DEFAULTS = {
     "include_server_side_tool_invocations": False,
     "media_resolution": None,
     "safety_settings": [],
+    "quick_controls_expanded": True,
+    "quick_style_preset": "balanced",
+    "quick_task_preset": "analysis",
+    "quick_task_preset_by_user": {},
     "system_prompt": (
         "Bạn là trợ lý AI thông minh, thân thiện. "
         "Luôn trả lời bằng Tiếng Việt, giải thích rõ ràng, xưng hô bạn/tôi. "
