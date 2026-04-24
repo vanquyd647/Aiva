@@ -78,6 +78,8 @@ All notable changes to this project will be documented in this file.
 - Fixed desktop conversation-switch crash on Python 3.14 + CustomTkinter by replacing unsupported `CTkTextbox.cget("state")` checks with internal input-state tracking.
 - User settings dialog was modernized to tabbed sections and now exposes full Gemma 4 advanced controls (thinking, function-calling, schemas, tools, safety, and media resolution).
 - User settings now support backend login to fetch access token directly, with clearer auth-failure prompts and automatic backend-stream disable when token is missing.
+- Fixed Gemini request compatibility by sending `stream_function_call_arguments` only when the installed SDK/API supports the field.
+- User desktop runtime is now hard-locked to backend-only mode (local Gemini route removed from send/attachment/branching flows and backend-stream setting is forced on).
 - Clean-code pass across backend + desktop modules:
   - Fixed async exception-capture closures that could trigger undefined-name lint errors.
   - Normalized SQLAlchemy relationship typing with forward-reference safe annotations.

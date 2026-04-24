@@ -215,6 +215,18 @@ def _build_tools(cfg: dict) -> list[types.Tool] | None:
     return [types.Tool(function_declarations=functions)]
 
 
+def _supports_stream_function_call_arguments() -> bool:
+    model_fields = getattr(types.FunctionCallingConfig, "model_fields", None)
+    if isinstance(model_fields, dict):
+        return "stream_function_call_arguments" in model_fields
+
+    legacy_fields = getattr(types.FunctionCallingConfig, "__fields__", None)
+    if isinstance(legacy_fields, dict):
+        return "stream_function_call_arguments" in legacy_fields
+
+    return False
+
+
 def _build_tool_config(cfg: dict) -> types.ToolConfig | None:
     mode_token = _normalize_enum_token(cfg.get("function_calling_mode"))
     function_calling_mode = _FUNCTION_MODE_MAP.get(mode_token)
@@ -225,16 +237,15 @@ def _build_tool_config(cfg: dict) -> types.ToolConfig | None:
         if str(item).strip()
     ]
 
-    stream_args_value = cfg.get("stream_function_call_arguments")
-    has_stream_args_flag = stream_args_value is not None
+    stream_args_enabled = bool(cfg.get("stream_function_call_arguments", False))
 
     function_cfg_kwargs: dict[str, Any] = {}
     if function_calling_mode is not None:
         function_cfg_kwargs["mode"] = function_calling_mode
     if allowed_function_names:
         function_cfg_kwargs["allowed_function_names"] = allowed_function_names
-    if has_stream_args_flag:
-        function_cfg_kwargs["stream_function_call_arguments"] = bool(stream_args_value)
+    if stream_args_enabled and _supports_stream_function_call_arguments():
+        function_cfg_kwargs["stream_function_call_arguments"] = True
 
     include_server_calls = cfg.get("include_server_side_tool_invocations")
     has_include_server_calls = include_server_calls is not None

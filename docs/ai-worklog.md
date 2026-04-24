@@ -93,3 +93,14 @@ Track every AI-assisted code change here. This file is mandatory for code-change
 	- clearer authentication-failure message,
 	- prompt to open settings for re-login,
 	- auto-disable backend streaming at save time when token is empty.
+
+### Gemini API Compatibility Fix
+- Added SDK/API capability guard for `stream_function_call_arguments` in both backend and local Gemini adapters.
+- Runtime now omits this field when unsupported to avoid request failure: `stream_function_call_arguments parameter is not supported in Gemini API`.
+
+### User App Backend-Only Lock
+- Hard-locked user desktop runtime to backend-only mode:
+	- removed runtime fallback path that called local `core.gemini` directly,
+	- forced `use_backend_stream=True` at startup and on settings save,
+	- disabled backend-stream toggle in settings UI and added explicit backend-only notice,
+	- removed local attachment routing branch so uploads always go through backend APIs.

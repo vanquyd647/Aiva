@@ -19,7 +19,6 @@ import core.config as cfg_module
 import core.history as history
 import core.i18n as i18n
 import core.backend_chat as backend_chat
-import core.gemini as gemini
 
 # ─── Cấu hình giao diện mặc định ─────────────────────────────────────────────
 ctk.set_appearance_mode("dark")
@@ -61,6 +60,7 @@ class SettingsDialog(ctk.CTkToplevel):
         self.grab_set()
 
         self.cfg = dict(cfg)
+        self.cfg["use_backend_stream"] = True
         self.on_save = on_save
         self._build()
 
@@ -378,10 +378,20 @@ class SettingsDialog(ctk.CTkToplevel):
         backend.pack(fill="both", expand=True, padx=6, pady=6)
 
         ctk.CTkLabel(backend, text=self.tr("settings_backend_stream"), anchor="w").pack(fill="x", **pad)
-        self.backend_stream_var = tk.BooleanVar(value=bool(self.cfg.get("use_backend_stream", False)))
-        ctk.CTkSwitch(
+        self.backend_stream_var = tk.BooleanVar(value=True)
+        backend_stream_switch = ctk.CTkSwitch(
             backend, text="", variable=self.backend_stream_var, onvalue=True, offvalue=False
-        ).pack(anchor="w", **pad)
+        )
+        backend_stream_switch.pack(anchor="w", **pad)
+        backend_stream_switch.select()
+        backend_stream_switch.configure(state="disabled")
+        ctk.CTkLabel(
+            backend,
+            text=self.tr("settings_backend_only_locked"),
+            anchor="w",
+            text_color=("gray30", "gray70"),
+            justify="left",
+        ).pack(fill="x", **pad)
 
         ctk.CTkLabel(backend, text=self.tr("settings_web_citations"), anchor="w").pack(fill="x", **pad)
         self.web_citations_var = tk.BooleanVar(value=bool(self.cfg.get("use_web_citations", True)))
@@ -578,7 +588,7 @@ class SettingsDialog(ctk.CTkToplevel):
             msgbox.showwarning(self.tr("dialog_notice_title"), str(exc))
             return
 
-        self.cfg["use_backend_stream"] = bool(self.backend_stream_var.get())
+        self.cfg["use_backend_stream"] = True
         self.cfg["use_web_citations"] = bool(self.web_citations_var.get())
         try:
             self.cfg["web_citation_max_results"] = int(self.web_citation_limit_var.get())
@@ -587,13 +597,6 @@ class SettingsDialog(ctk.CTkToplevel):
         self.cfg["backend_api_url"] = self.backend_url_var.get().strip()
         self.cfg["backend_user_email"] = self.backend_email_var.get().strip()
         self.cfg["backend_access_token"] = self.backend_token_var.get().strip()
-
-        if self.cfg["use_backend_stream"] and not self.cfg["backend_access_token"]:
-            self.cfg["use_backend_stream"] = False
-            msgbox.showwarning(
-                self.tr("dialog_notice_title"),
-                self.tr("settings_backend_stream_disabled_no_token"),
-            )
 
         self.on_save(self.cfg)
         ctk.set_appearance_mode(self.cfg["theme"])
@@ -976,6 +979,7 @@ class App(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.cfg = cfg_module.load()
+        self.cfg["use_backend_stream"] = True
         self.i18n = i18n.Translator(self.cfg.get("language", "vi"))
 
         self.title(self.tr("app_title"))
@@ -1142,15 +1146,6 @@ class App(ctk.CTk):
         )
 
     def _refresh_usage_summary_async(self, silent: bool = True) -> None:
-        if not self.cfg.get("use_backend_stream"):
-            self.usage_lbl.configure(
-                text=self.tr("usage_badge_local_mode"),
-                fg_color=("#ececec", "#2f2f2f"),
-                text_color=("#444444", "#d8d8d8"),
-            )
-            self.usage_progress.set(0)
-            return
-
         backend_url = str(self.cfg.get("backend_api_url", "")).strip().rstrip("/")
         token = str(self.cfg.get("backend_access_token", "")).strip()
         if not backend_url or not token:
@@ -1387,25 +1382,24 @@ class App(ctk.CTk):
         if self._is_busy:
             return
 
-        if self.cfg.get("use_backend_stream"):
-            backend_url = str(self.cfg.get("backend_api_url", "")).strip()
-            if not backend_url:
-                msgbox.showwarning(
-                    self.tr("dialog_notice_title"), self.tr("dialog_backend_url_missing")
-                )
-                self._set_status(self.tr("status_error"), "error")
-                return
+        backend_url = str(self.cfg.get("backend_api_url", "")).strip()
+        if not backend_url:
+            msgbox.showwarning(
+                self.tr("dialog_notice_title"), self.tr("dialog_backend_url_missing")
+            )
+            self._set_status(self.tr("status_error"), "error")
+            return
 
-            token = str(self.cfg.get("backend_access_token", "")).strip()
-            if not token:
-                should_open_settings = msgbox.askyesno(
-                    self.tr("dialog_notice_title"),
-                    self.tr("dialog_backend_auth_open_settings"),
-                )
-                if should_open_settings:
-                    self._open_settings()
-                self._set_status(self.tr("status_error"), "error")
-                return
+        token = str(self.cfg.get("backend_access_token", "")).strip()
+        if not token:
+            should_open_settings = msgbox.askyesno(
+                self.tr("dialog_notice_title"),
+                self.tr("dialog_backend_auth_open_settings"),
+            )
+            if should_open_settings:
+                self._open_settings()
+            self._set_status(self.tr("status_error"), "error")
+            return
 
         self._is_busy = True
         self.chat.set_input_enabled(False)
@@ -1417,27 +1411,17 @@ class App(ctk.CTk):
         # Bắt đầu bubble streaming
         self.chat.start_streaming_bubble()
 
-        if self.cfg.get("use_backend_stream"):
-            runtime_cfg = dict(self.cfg)
-            runtime_cfg["_backend_conversation_id"] = self.conv.get("server_conversation_id")
-            runtime_cfg["_backend_conversation_title"] = self.conv.get(
-                "title", self.tr("conversation_new")
-            )
+        runtime_cfg = dict(self.cfg)
+        runtime_cfg["_backend_conversation_id"] = self.conv.get("server_conversation_id")
+        runtime_cfg["_backend_conversation_title"] = self.conv.get(
+            "title", self.tr("conversation_new")
+        )
 
-            backend_chat.send_message(
-                messages=messages_payload,
-                cfg=runtime_cfg,
-                on_chunk=self._on_chunk,
-                on_done=lambda text: self._on_done_backend(text, runtime_cfg),
-                on_error=self._on_error,
-            )
-            return
-
-        gemini.send_message(
+        backend_chat.send_message(
             messages=messages_payload,
-            cfg=self.cfg,
+            cfg=runtime_cfg,
             on_chunk=self._on_chunk,
-            on_done=self._on_done,
+            on_done=lambda text: self._on_done_backend(text, runtime_cfg),
             on_error=self._on_error,
         )
 
@@ -1622,9 +1606,7 @@ class App(ctk.CTk):
 
     def _prepare_attachment(self, file_path: str) -> dict | None:
         try:
-            if self.cfg.get("use_backend_stream"):
-                return self._upload_attachment_backend(file_path)
-            return self._build_local_attachment(file_path)
+            return self._upload_attachment_backend(file_path)
         except Exception as exc:
             msgbox.showwarning(
                 self.tr("dialog_notice_title"),
@@ -1773,9 +1755,6 @@ class App(ctk.CTk):
         return [dict(item) for item in self.conv.get("messages", [])[: message_index + 1]]
 
     def _request_backend_branch(self, from_message_id: int | None) -> tuple[int | None, str | None]:
-        if not self.cfg.get("use_backend_stream"):
-            return None, None
-
         source_server_conversation_id = self.conv.get("server_conversation_id")
         backend_url = str(self.cfg.get("backend_api_url", "")).strip().rstrip("/")
         if source_server_conversation_id is None or not backend_url:
@@ -1813,7 +1792,7 @@ class App(ctk.CTk):
             return None, None
 
     def _rebase_server_conversation(self, cutoff_index: int | None) -> None:
-        if not self.cfg.get("use_backend_stream") or self.conv.get("server_conversation_id") is None:
+        if self.conv.get("server_conversation_id") is None:
             return
 
         from_message_id = None
@@ -1879,7 +1858,7 @@ class App(ctk.CTk):
         branch_server_id = None
         branch_title = None
         selected_server_message_id = self._message_server_id(message_index)
-        if self.cfg.get("use_backend_stream") and selected_server_message_id is not None:
+        if selected_server_message_id is not None:
             branch_server_id, branch_title = self._request_backend_branch(selected_server_message_id)
 
         local_branch = history.new_conversation()
@@ -2014,9 +1993,9 @@ class App(ctk.CTk):
     def _open_settings(self):
         def _save(new_cfg):
             previous_lang = self.cfg.get("language", "vi")
+            new_cfg["use_backend_stream"] = True
             self.cfg = new_cfg
             cfg_module.save(new_cfg)
-            gemini.reset_client()  # reset client khi model/key thay đổi
             self.i18n.set_language(self.cfg.get("language", "vi"))
             self._set_status(self.tr("status_model", model=self.cfg["model"]), "ready")
             self._refresh_usage_summary_async(silent=True)
