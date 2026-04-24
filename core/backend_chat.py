@@ -9,6 +9,26 @@ from typing import Callable
 import requests
 
 
+def _response_error_text(resp: requests.Response) -> str:
+    try:
+        payload = resp.json()
+    except Exception:
+        return resp.text.strip() or f"HTTP {resp.status_code}"
+
+    if not isinstance(payload, dict):
+        return resp.text.strip() or f"HTTP {resp.status_code}"
+
+    detail = payload.get("detail")
+    if isinstance(detail, list):
+        return "; ".join(
+            str(item.get("msg", item)) if isinstance(item, dict) else str(item)
+            for item in detail
+        )
+    if detail:
+        return str(detail)
+    return resp.text.strip() or f"HTTP {resp.status_code}"
+
+
 def send_message(
     messages: list[dict],
     cfg: dict,
@@ -78,7 +98,7 @@ def send_message(
                 timeout=(10, 600),
             ) as response:
                 if response.status_code >= 400:
-                    detail = response.text.strip() or f"HTTP {response.status_code}"
+                    detail = _response_error_text(response)
                     on_error(detail)
                     return
 

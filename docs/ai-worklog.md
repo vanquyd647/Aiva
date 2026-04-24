@@ -77,3 +77,19 @@ Track every AI-assisted code change here. This file is mandatory for code-change
 ### Desktop Stability Fix
 - Resolved runtime crash when loading conversations caused by `CTkTextbox.cget("state")` not being supported in current CustomTkinter.
 - Updated chat input state handling to use an internal `_input_enabled` flag for safe enable/disable checks.
+
+### User UX Remediation (Gemma4 + Auth)
+- Modernized `SettingsDialog` from a linear form into tabbed settings (`General`, `Gemma 4`, `Backend/Auth`) for better discoverability.
+- Exposed full Gemma4 advanced runtime controls in user settings:
+	- generation knobs (`top_p`, `top_k`, `max_output_tokens`, `candidate_count`, stop sequences, seed, penalties),
+	- thinking controls,
+	- function-calling controls,
+	- structured output schema fields,
+	- tools/safety JSON controls,
+	- media resolution.
+- Added backend user login flow directly in user settings to fetch and store access token without using admin app.
+- Added auth-aware UX guardrails:
+	- preflight check before backend streaming when token is missing,
+	- clearer authentication-failure message,
+	- prompt to open settings for re-login,
+	- auto-disable backend streaming at save time when token is empty.

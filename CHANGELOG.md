@@ -76,6 +76,8 @@ All notable changes to this project will be documented in this file.
 - Chat streaming now supports optional web grounding context and emits citations in SSE `done` payload.
 - Desktop user app can enable web citations from settings and appends source references to backend-streamed answers.
 - Fixed desktop conversation-switch crash on Python 3.14 + CustomTkinter by replacing unsupported `CTkTextbox.cget("state")` checks with internal input-state tracking.
+- User settings dialog was modernized to tabbed sections and now exposes full Gemma 4 advanced controls (thinking, function-calling, schemas, tools, safety, and media resolution).
+- User settings now support backend login to fetch access token directly, with clearer auth-failure prompts and automatic backend-stream disable when token is missing.
 - Clean-code pass across backend + desktop modules:
   - Fixed async exception-capture closures that could trigger undefined-name lint errors.
   - Normalized SQLAlchemy relationship typing with forward-reference safe annotations.

@@ -20,6 +20,7 @@ DEFAULTS = {
     "language": "vi",
     "use_backend_stream": True,
     "backend_api_url": "http://127.0.0.1:8080",
+    "backend_user_email": "",
     "backend_access_token": "",
     "use_web_citations": True,
     "web_citation_max_results": 3,

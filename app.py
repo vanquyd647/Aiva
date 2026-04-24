@@ -8,6 +8,7 @@ import tkinter.filedialog as filedialog
 import tkinter.messagebox as msgbox
 import tkinter.simpledialog as simpledialog
 import base64
+import json
 import mimetypes
 import threading
 from pathlib import Path
@@ -49,11 +50,13 @@ LOCAL_TEXT_ATTACHMENT_EXTENSIONS = {
 
 
 class SettingsDialog(ctk.CTkToplevel):
+    _UNSET_OPTION = "unset"
+
     def __init__(self, parent, cfg: dict, on_save, tr):
         super().__init__(parent)
         self.tr = tr
         self.title(self.tr("settings_dialog_title"))
-        self.geometry("520x560")
+        self.geometry("760x820")
         self.resizable(False, False)
         self.grab_set()
 
@@ -61,83 +64,520 @@ class SettingsDialog(ctk.CTkToplevel):
         self.on_save = on_save
         self._build()
 
-    def _build(self):
-        pad = {"padx": 20, "pady": 6}
+    @staticmethod
+    def _csv_to_list(raw: str) -> list[str]:
+        return [item.strip() for item in str(raw).split(",") if item.strip()]
 
-        ctk.CTkLabel(self, text=self.tr("settings_model"), anchor="w").pack(fill="x", **pad)
-        self.model_var = ctk.StringVar(value=self.cfg["model"])
+    @staticmethod
+    def _none_if_unset(value: str) -> str | None:
+        normalized = str(value or "").strip().lower()
+        if not normalized or normalized == SettingsDialog._UNSET_OPTION:
+            return None
+        return normalized
+
+    @staticmethod
+    def _optional_int(raw: str, minimum: int | None = None, maximum: int | None = None) -> int | None:
+        text = str(raw).strip()
+        if not text:
+            return None
+        try:
+            value = int(text)
+        except Exception:
+            return None
+        if minimum is not None and value < minimum:
+            return minimum
+        if maximum is not None and value > maximum:
+            return maximum
+        return value
+
+    @staticmethod
+    def _optional_float(
+        raw: str,
+        minimum: float | None = None,
+        maximum: float | None = None,
+    ) -> float | None:
+        text = str(raw).strip()
+        if not text:
+            return None
+        try:
+            value = float(text)
+        except Exception:
+            return None
+        if minimum is not None and value < minimum:
+            return minimum
+        if maximum is not None and value > maximum:
+            return maximum
+        return value
+
+    @staticmethod
+    def _bounded_float(raw: str, fallback: float, minimum: float, maximum: float) -> float:
+        parsed = SettingsDialog._optional_float(raw, minimum=minimum, maximum=maximum)
+        if parsed is None:
+            return fallback
+        return parsed
+
+    @staticmethod
+    def _bounded_int(raw: str, fallback: int, minimum: int, maximum: int) -> int:
+        parsed = SettingsDialog._optional_int(raw, minimum=minimum, maximum=maximum)
+        if parsed is None:
+            return fallback
+        return parsed
+
+    @staticmethod
+    def _dump_json(value: object) -> str:
+        if value in (None, {}, []):
+            return ""
+        try:
+            return json.dumps(value, ensure_ascii=False, indent=2)
+        except Exception:
+            return ""
+
+    @staticmethod
+    def _error_text(resp: requests.Response) -> str:
+        try:
+            payload = resp.json()
+        except Exception:
+            return resp.text.strip() or f"HTTP {resp.status_code}"
+
+        if not isinstance(payload, dict):
+            return resp.text.strip() or f"HTTP {resp.status_code}"
+
+        detail = payload.get("detail")
+        if isinstance(detail, list):
+            return "; ".join(
+                str(item.get("msg", item)) if isinstance(item, dict) else str(item)
+                for item in detail
+            )
+        if detail:
+            return str(detail)
+        return resp.text.strip() or f"HTTP {resp.status_code}"
+
+    def _parse_json_dict_or_none(self, raw: str, field_label: str) -> dict | None:
+        text = raw.strip()
+        if not text:
+            return None
+        try:
+            payload = json.loads(text)
+        except Exception:
+            raise ValueError(self.tr("settings_invalid_json", field=field_label))
+        if not isinstance(payload, dict):
+            raise ValueError(self.tr("settings_json_type_dict", field=field_label))
+        return payload
+
+    def _parse_json_list_or_empty(self, raw: str, field_label: str) -> list:
+        text = raw.strip()
+        if not text:
+            return []
+        try:
+            payload = json.loads(text)
+        except Exception:
+            raise ValueError(self.tr("settings_invalid_json", field=field_label))
+        if not isinstance(payload, list):
+            raise ValueError(self.tr("settings_json_type_list", field=field_label))
+        return payload
+
+    def _set_backend_auth_status(self, text: str) -> None:
+        self.backend_auth_status_lbl.configure(text=text)
+
+    def _build(self):
+        pad = {"padx": 12, "pady": 6}
+
+        tabs = ctk.CTkTabview(self)
+        tabs.pack(fill="both", expand=True, padx=14, pady=(14, 8))
+
+        general_tab = tabs.add(self.tr("settings_tab_general"))
+        gemma_tab = tabs.add(self.tr("settings_tab_gemma4"))
+        backend_tab = tabs.add(self.tr("settings_tab_backend"))
+
+        general = ctk.CTkScrollableFrame(general_tab, fg_color="transparent")
+        general.pack(fill="both", expand=True, padx=6, pady=6)
+
+        ctk.CTkLabel(general, text=self.tr("settings_model"), anchor="w").pack(fill="x", **pad)
+        self.model_var = ctk.StringVar(value=self.cfg.get("model", "gemma-4-31b-it"))
         ctk.CTkOptionMenu(
-            self,
+            general,
             variable=self.model_var,
-            values=self.cfg.get("available_models", [self.cfg["model"]]),
+            values=self.cfg.get("available_models", [self.cfg.get("model", "gemma-4-31b-it")]),
         ).pack(fill="x", **pad)
 
-        ctk.CTkLabel(self, text=self.tr("settings_temperature"), anchor="w").pack(fill="x", **pad)
-        self.temp_var = ctk.DoubleVar(value=self.cfg["temperature"])
-        ctk.CTkSlider(self, from_=0, to=2, variable=self.temp_var, number_of_steps=20).pack(
+        ctk.CTkLabel(general, text=self.tr("settings_temperature"), anchor="w").pack(fill="x", **pad)
+        self.temp_var = ctk.DoubleVar(value=float(self.cfg.get("temperature", 1.0)))
+        ctk.CTkSlider(general, from_=0, to=2, variable=self.temp_var, number_of_steps=40).pack(
             fill="x", **pad
         )
 
-        ctk.CTkLabel(self, text=self.tr("settings_system_prompt"), anchor="w").pack(fill="x", **pad)
-        self.prompt_box = ctk.CTkTextbox(self, height=140)
+        ctk.CTkLabel(general, text=self.tr("settings_system_prompt"), anchor="w").pack(fill="x", **pad)
+        self.prompt_box = ctk.CTkTextbox(general, height=140)
         self.prompt_box.pack(fill="x", **pad)
         self.prompt_box.insert("end", self.cfg.get("system_prompt", ""))
 
-        ctk.CTkLabel(self, text=self.tr("settings_theme"), anchor="w").pack(fill="x", **pad)
-        self.theme_var = ctk.StringVar(value=self.cfg["theme"])
-        ctk.CTkOptionMenu(self, variable=self.theme_var, values=["dark", "light", "system"]).pack(
+        ctk.CTkLabel(general, text=self.tr("settings_theme"), anchor="w").pack(fill="x", **pad)
+        self.theme_var = ctk.StringVar(value=self.cfg.get("theme", "dark"))
+        ctk.CTkOptionMenu(general, variable=self.theme_var, values=["dark", "light", "system"]).pack(
             fill="x", **pad
         )
 
-        ctk.CTkLabel(self, text=self.tr("settings_language"), anchor="w").pack(fill="x", **pad)
+        ctk.CTkLabel(general, text=self.tr("settings_language"), anchor="w").pack(fill="x", **pad)
         self.language_var = ctk.StringVar(value=self.cfg.get("language", "vi"))
-        ctk.CTkOptionMenu(self, variable=self.language_var, values=LANGUAGES).pack(fill="x", **pad)
+        ctk.CTkOptionMenu(general, variable=self.language_var, values=LANGUAGES).pack(fill="x", **pad)
 
-        ctk.CTkLabel(self, text=self.tr("settings_backend_stream"), anchor="w").pack(
-            fill="x", **pad
+        gemma = ctk.CTkScrollableFrame(gemma_tab, fg_color="transparent")
+        gemma.pack(fill="both", expand=True, padx=6, pady=6)
+
+        ctk.CTkLabel(gemma, text=self.tr("settings_top_p"), anchor="w").pack(fill="x", **pad)
+        self.top_p_var = ctk.StringVar(value=str(self.cfg.get("top_p", 0.95)))
+        ctk.CTkEntry(gemma, textvariable=self.top_p_var).pack(fill="x", **pad)
+
+        ctk.CTkLabel(gemma, text=self.tr("settings_top_k"), anchor="w").pack(fill="x", **pad)
+        self.top_k_var = ctk.StringVar(value=str(self.cfg.get("top_k", 64)))
+        ctk.CTkEntry(gemma, textvariable=self.top_k_var).pack(fill="x", **pad)
+
+        ctk.CTkLabel(gemma, text=self.tr("settings_max_output_tokens"), anchor="w").pack(fill="x", **pad)
+        self.max_output_tokens_var = ctk.StringVar(value=str(self.cfg.get("max_output_tokens", 8192)))
+        ctk.CTkEntry(gemma, textvariable=self.max_output_tokens_var).pack(fill="x", **pad)
+
+        ctk.CTkLabel(gemma, text=self.tr("settings_candidate_count"), anchor="w").pack(fill="x", **pad)
+        self.candidate_count_var = ctk.StringVar(value=str(self.cfg.get("candidate_count", 1)))
+        ctk.CTkOptionMenu(
+            gemma,
+            variable=self.candidate_count_var,
+            values=[str(i) for i in range(1, 9)],
+        ).pack(fill="x", **pad)
+
+        ctk.CTkLabel(gemma, text=self.tr("settings_stop_sequences"), anchor="w").pack(fill="x", **pad)
+        self.stop_sequences_var = ctk.StringVar(
+            value=", ".join(str(item) for item in (self.cfg.get("stop_sequences") or []))
         )
-        self.backend_stream_var = tk.BooleanVar(
-            value=bool(self.cfg.get("use_backend_stream", False))
+        ctk.CTkEntry(gemma, textvariable=self.stop_sequences_var).pack(fill="x", **pad)
+
+        ctk.CTkLabel(gemma, text=self.tr("settings_seed"), anchor="w").pack(fill="x", **pad)
+        self.seed_var = ctk.StringVar(value="" if self.cfg.get("seed") is None else str(self.cfg.get("seed")))
+        ctk.CTkEntry(gemma, textvariable=self.seed_var).pack(fill="x", **pad)
+
+        ctk.CTkLabel(gemma, text=self.tr("settings_presence_penalty"), anchor="w").pack(fill="x", **pad)
+        self.presence_penalty_var = ctk.StringVar(
+            value=""
+            if self.cfg.get("presence_penalty") is None
+            else str(self.cfg.get("presence_penalty"))
         )
+        ctk.CTkEntry(gemma, textvariable=self.presence_penalty_var).pack(fill="x", **pad)
+
+        ctk.CTkLabel(gemma, text=self.tr("settings_frequency_penalty"), anchor="w").pack(fill="x", **pad)
+        self.frequency_penalty_var = ctk.StringVar(
+            value=""
+            if self.cfg.get("frequency_penalty") is None
+            else str(self.cfg.get("frequency_penalty"))
+        )
+        ctk.CTkEntry(gemma, textvariable=self.frequency_penalty_var).pack(fill="x", **pad)
+
+        ctk.CTkLabel(gemma, text=self.tr("settings_enable_thinking"), anchor="w").pack(fill="x", **pad)
+        self.enable_thinking_var = tk.BooleanVar(value=bool(self.cfg.get("enable_thinking", False)))
         ctk.CTkSwitch(
-            self, text="", variable=self.backend_stream_var, onvalue=True, offvalue=False
+            gemma, text="", variable=self.enable_thinking_var, onvalue=True, offvalue=False
         ).pack(anchor="w", **pad)
 
-        ctk.CTkLabel(self, text=self.tr("settings_web_citations"), anchor="w").pack(fill="x", **pad)
+        ctk.CTkLabel(gemma, text=self.tr("settings_include_thoughts"), anchor="w").pack(fill="x", **pad)
+        self.include_thoughts_var = tk.BooleanVar(value=bool(self.cfg.get("include_thoughts", False)))
+        ctk.CTkSwitch(
+            gemma, text="", variable=self.include_thoughts_var, onvalue=True, offvalue=False
+        ).pack(anchor="w", **pad)
+
+        ctk.CTkLabel(gemma, text=self.tr("settings_thinking_budget_tokens"), anchor="w").pack(fill="x", **pad)
+        self.thinking_budget_tokens_var = ctk.StringVar(
+            value=""
+            if self.cfg.get("thinking_budget_tokens") is None
+            else str(self.cfg.get("thinking_budget_tokens"))
+        )
+        ctk.CTkEntry(gemma, textvariable=self.thinking_budget_tokens_var).pack(fill="x", **pad)
+
+        ctk.CTkLabel(gemma, text=self.tr("settings_thinking_level"), anchor="w").pack(fill="x", **pad)
+        self.thinking_level_var = ctk.StringVar(
+            value=str(self.cfg.get("thinking_level") or self._UNSET_OPTION)
+        )
+        ctk.CTkOptionMenu(
+            gemma,
+            variable=self.thinking_level_var,
+            values=[self._UNSET_OPTION, "minimal", "low", "medium", "high"],
+        ).pack(fill="x", **pad)
+
+        ctk.CTkLabel(gemma, text=self.tr("settings_response_mime_type"), anchor="w").pack(fill="x", **pad)
+        self.response_mime_type_var = ctk.StringVar(
+            value=str(self.cfg.get("response_mime_type") or self._UNSET_OPTION)
+        )
+        ctk.CTkOptionMenu(
+            gemma,
+            variable=self.response_mime_type_var,
+            values=[self._UNSET_OPTION, "text/plain", "application/json"],
+        ).pack(fill="x", **pad)
+
+        ctk.CTkLabel(gemma, text=self.tr("settings_function_calling_mode"), anchor="w").pack(fill="x", **pad)
+        self.function_calling_mode_var = ctk.StringVar(
+            value=str(self.cfg.get("function_calling_mode") or self._UNSET_OPTION)
+        )
+        ctk.CTkOptionMenu(
+            gemma,
+            variable=self.function_calling_mode_var,
+            values=[self._UNSET_OPTION, "auto", "any", "none", "validated"],
+        ).pack(fill="x", **pad)
+
+        ctk.CTkLabel(gemma, text=self.tr("settings_allowed_function_names"), anchor="w").pack(fill="x", **pad)
+        self.allowed_function_names_var = ctk.StringVar(
+            value=", ".join(str(item) for item in (self.cfg.get("allowed_function_names") or []))
+        )
+        ctk.CTkEntry(gemma, textvariable=self.allowed_function_names_var).pack(fill="x", **pad)
+
+        ctk.CTkLabel(gemma, text=self.tr("settings_stream_function_args"), anchor="w").pack(fill="x", **pad)
+        self.stream_function_args_var = tk.BooleanVar(
+            value=bool(self.cfg.get("stream_function_call_arguments", False))
+        )
+        ctk.CTkSwitch(
+            gemma, text="", variable=self.stream_function_args_var, onvalue=True, offvalue=False
+        ).pack(anchor="w", **pad)
+
+        ctk.CTkLabel(gemma, text=self.tr("settings_include_server_tool_calls"), anchor="w").pack(fill="x", **pad)
+        self.include_server_tools_var = tk.BooleanVar(
+            value=bool(self.cfg.get("include_server_side_tool_invocations", False))
+        )
+        ctk.CTkSwitch(
+            gemma, text="", variable=self.include_server_tools_var, onvalue=True, offvalue=False
+        ).pack(anchor="w", **pad)
+
+        ctk.CTkLabel(gemma, text=self.tr("settings_media_resolution"), anchor="w").pack(fill="x", **pad)
+        self.media_resolution_var = ctk.StringVar(
+            value=str(self.cfg.get("media_resolution") or self._UNSET_OPTION)
+        )
+        ctk.CTkOptionMenu(
+            gemma,
+            variable=self.media_resolution_var,
+            values=[self._UNSET_OPTION, "low", "medium", "high"],
+        ).pack(fill="x", **pad)
+
+        ctk.CTkLabel(gemma, text=self.tr("settings_response_schema"), anchor="w").pack(fill="x", **pad)
+        self.response_schema_box = ctk.CTkTextbox(gemma, height=110)
+        self.response_schema_box.pack(fill="x", **pad)
+        self.response_schema_box.insert("1.0", self._dump_json(self.cfg.get("response_schema")))
+
+        ctk.CTkLabel(gemma, text=self.tr("settings_response_json_schema"), anchor="w").pack(fill="x", **pad)
+        self.response_json_schema_box = ctk.CTkTextbox(gemma, height=110)
+        self.response_json_schema_box.pack(fill="x", **pad)
+        self.response_json_schema_box.insert(
+            "1.0", self._dump_json(self.cfg.get("response_json_schema"))
+        )
+
+        ctk.CTkLabel(gemma, text=self.tr("settings_tools_json"), anchor="w").pack(fill="x", **pad)
+        self.tools_box = ctk.CTkTextbox(gemma, height=120)
+        self.tools_box.pack(fill="x", **pad)
+        self.tools_box.insert("1.0", self._dump_json(self.cfg.get("tools")))
+
+        ctk.CTkLabel(gemma, text=self.tr("settings_safety_settings_json"), anchor="w").pack(fill="x", **pad)
+        self.safety_settings_box = ctk.CTkTextbox(gemma, height=120)
+        self.safety_settings_box.pack(fill="x", **pad)
+        self.safety_settings_box.insert("1.0", self._dump_json(self.cfg.get("safety_settings")))
+
+        backend = ctk.CTkScrollableFrame(backend_tab, fg_color="transparent")
+        backend.pack(fill="both", expand=True, padx=6, pady=6)
+
+        ctk.CTkLabel(backend, text=self.tr("settings_backend_stream"), anchor="w").pack(fill="x", **pad)
+        self.backend_stream_var = tk.BooleanVar(value=bool(self.cfg.get("use_backend_stream", False)))
+        ctk.CTkSwitch(
+            backend, text="", variable=self.backend_stream_var, onvalue=True, offvalue=False
+        ).pack(anchor="w", **pad)
+
+        ctk.CTkLabel(backend, text=self.tr("settings_web_citations"), anchor="w").pack(fill="x", **pad)
         self.web_citations_var = tk.BooleanVar(value=bool(self.cfg.get("use_web_citations", True)))
         ctk.CTkSwitch(
-            self, text="", variable=self.web_citations_var, onvalue=True, offvalue=False
+            backend, text="", variable=self.web_citations_var, onvalue=True, offvalue=False
         ).pack(anchor="w", **pad)
 
-        ctk.CTkLabel(self, text=self.tr("settings_web_citation_limit"), anchor="w").pack(
-            fill="x", **pad
-        )
+        ctk.CTkLabel(backend, text=self.tr("settings_web_citation_limit"), anchor="w").pack(fill="x", **pad)
         self.web_citation_limit_var = ctk.StringVar(
             value=str(int(self.cfg.get("web_citation_max_results", 3) or 3))
         )
         ctk.CTkOptionMenu(
-            self,
+            backend,
             variable=self.web_citation_limit_var,
             values=["2", "3", "4", "5", "6", "8", "10"],
         ).pack(fill="x", **pad)
 
-        ctk.CTkLabel(self, text=self.tr("settings_backend_url"), anchor="w").pack(fill="x", **pad)
+        ctk.CTkLabel(backend, text=self.tr("settings_backend_url"), anchor="w").pack(fill="x", **pad)
         self.backend_url_var = ctk.StringVar(value=self.cfg.get("backend_api_url", ""))
-        ctk.CTkEntry(self, textvariable=self.backend_url_var).pack(fill="x", **pad)
+        ctk.CTkEntry(backend, textvariable=self.backend_url_var).pack(fill="x", **pad)
 
-        ctk.CTkLabel(self, text=self.tr("settings_backend_token"), anchor="w").pack(fill="x", **pad)
+        ctk.CTkLabel(backend, text=self.tr("settings_backend_email"), anchor="w").pack(fill="x", **pad)
+        self.backend_email_var = ctk.StringVar(value=self.cfg.get("backend_user_email", ""))
+        ctk.CTkEntry(backend, textvariable=self.backend_email_var).pack(fill="x", **pad)
+
+        ctk.CTkLabel(backend, text=self.tr("settings_backend_password"), anchor="w").pack(fill="x", **pad)
+        self.backend_password_var = ctk.StringVar(value="")
+        ctk.CTkEntry(backend, textvariable=self.backend_password_var, show="*").pack(fill="x", **pad)
+
+        ctk.CTkLabel(backend, text=self.tr("settings_backend_token"), anchor="w").pack(fill="x", **pad)
         self.backend_token_var = ctk.StringVar(value=self.cfg.get("backend_access_token", ""))
-        ctk.CTkEntry(self, textvariable=self.backend_token_var, show="*").pack(fill="x", **pad)
+        ctk.CTkEntry(backend, textvariable=self.backend_token_var, show="*").pack(fill="x", **pad)
 
-        # Nút lưu
-        ctk.CTkButton(self, text=self.tr("settings_save"), command=self._save).pack(pady=16)
+        auth_actions = ctk.CTkFrame(backend, fg_color="transparent")
+        auth_actions.pack(fill="x", **pad)
+        ctk.CTkButton(
+            auth_actions,
+            text=self.tr("settings_backend_login"),
+            command=self._login_backend,
+            width=170,
+        ).pack(side="left")
+        ctk.CTkButton(
+            auth_actions,
+            text=self.tr("settings_backend_clear_token"),
+            command=lambda: self.backend_token_var.set(""),
+            width=170,
+        ).pack(side="left", padx=(10, 0))
+
+        self.backend_auth_status_lbl = ctk.CTkLabel(
+            backend,
+            text="",
+            anchor="w",
+            text_color=("gray30", "gray70"),
+        )
+        self.backend_auth_status_lbl.pack(fill="x", **pad)
+        if str(self.cfg.get("backend_access_token", "")).strip():
+            self._set_backend_auth_status(self.tr("settings_backend_auth_status_ready"))
+        else:
+            self._set_backend_auth_status(self.tr("settings_backend_auth_status_missing"))
+
+        footer = ctk.CTkFrame(self, fg_color="transparent")
+        footer.pack(fill="x", padx=14, pady=(0, 14))
+        ctk.CTkButton(footer, text=self.tr("settings_save"), command=self._save, width=180).pack(
+            side="right"
+        )
+
+    def _login_backend(self) -> None:
+        backend_url = self.backend_url_var.get().strip().rstrip("/")
+        email = self.backend_email_var.get().strip()
+        password = self.backend_password_var.get().strip()
+
+        if not backend_url or not email or not password:
+            msgbox.showwarning(
+                self.tr("dialog_notice_title"),
+                self.tr("settings_backend_login_required"),
+            )
+            return
+
+        try:
+            response = requests.post(
+                f"{backend_url}/api/v1/auth/login",
+                data={"username": email, "password": password},
+                timeout=20,
+            )
+        except Exception as exc:
+            msgbox.showwarning(
+                self.tr("dialog_notice_title"),
+                self.tr("settings_backend_login_failed", reason=str(exc)),
+            )
+            return
+
+        if response.status_code >= 400:
+            msgbox.showwarning(
+                self.tr("dialog_notice_title"),
+                self.tr("settings_backend_login_failed", reason=self._error_text(response)),
+            )
+            return
+
+        try:
+            payload = response.json()
+        except Exception:
+            payload = {}
+
+        token = str(payload.get("access_token", "")).strip()
+        if not token:
+            msgbox.showwarning(
+                self.tr("dialog_notice_title"),
+                self.tr("settings_backend_login_failed", reason="missing access_token"),
+            )
+            return
+
+        self.backend_token_var.set(token)
+        self.backend_stream_var.set(True)
+        self.backend_password_var.set("")
+        self._set_backend_auth_status(self.tr("settings_backend_login_success"))
 
     def _save(self):
-        self.cfg["model"] = self.model_var.get()
-        self.cfg["temperature"] = round(self.temp_var.get(), 2)
+        self.cfg["model"] = self.model_var.get().strip() or self.cfg.get("model", "gemma-4-31b-it")
+        self.cfg["temperature"] = round(float(self.temp_var.get()), 2)
+        self.cfg["top_p"] = self._bounded_float(
+            self.top_p_var.get(),
+            float(self.cfg.get("top_p", 0.95)),
+            minimum=0.01,
+            maximum=1.0,
+        )
+        self.cfg["top_k"] = self._bounded_int(
+            self.top_k_var.get(),
+            int(self.cfg.get("top_k", 64)),
+            minimum=1,
+            maximum=512,
+        )
+        self.cfg["max_output_tokens"] = self._bounded_int(
+            self.max_output_tokens_var.get(),
+            int(self.cfg.get("max_output_tokens", 8192)),
+            minimum=1,
+            maximum=32768,
+        )
+        self.cfg["candidate_count"] = self._bounded_int(
+            self.candidate_count_var.get(),
+            int(self.cfg.get("candidate_count", 1)),
+            minimum=1,
+            maximum=8,
+        )
+        self.cfg["stop_sequences"] = self._csv_to_list(self.stop_sequences_var.get())
+        self.cfg["seed"] = self._optional_int(self.seed_var.get(), minimum=0)
+        self.cfg["presence_penalty"] = self._optional_float(
+            self.presence_penalty_var.get(),
+            minimum=-2.0,
+            maximum=2.0,
+        )
+        self.cfg["frequency_penalty"] = self._optional_float(
+            self.frequency_penalty_var.get(),
+            minimum=-2.0,
+            maximum=2.0,
+        )
         self.cfg["system_prompt"] = self.prompt_box.get("1.0", "end").strip()
         self.cfg["theme"] = self.theme_var.get()
         self.cfg["language"] = self.language_var.get()
+        self.cfg["enable_thinking"] = bool(self.enable_thinking_var.get())
+        self.cfg["include_thoughts"] = bool(self.include_thoughts_var.get())
+        self.cfg["thinking_budget_tokens"] = self._optional_int(
+            self.thinking_budget_tokens_var.get(),
+            minimum=0,
+            maximum=32768,
+        )
+        self.cfg["thinking_level"] = self._none_if_unset(self.thinking_level_var.get())
+        self.cfg["response_mime_type"] = self._none_if_unset(self.response_mime_type_var.get())
+        self.cfg["function_calling_mode"] = self._none_if_unset(
+            self.function_calling_mode_var.get()
+        )
+        self.cfg["allowed_function_names"] = self._csv_to_list(self.allowed_function_names_var.get())
+        self.cfg["stream_function_call_arguments"] = bool(self.stream_function_args_var.get())
+        self.cfg["include_server_side_tool_invocations"] = bool(self.include_server_tools_var.get())
+        self.cfg["media_resolution"] = self._none_if_unset(self.media_resolution_var.get())
+
+        try:
+            self.cfg["response_schema"] = self._parse_json_dict_or_none(
+                self.response_schema_box.get("1.0", "end"),
+                self.tr("settings_response_schema"),
+            )
+            self.cfg["response_json_schema"] = self._parse_json_dict_or_none(
+                self.response_json_schema_box.get("1.0", "end"),
+                self.tr("settings_response_json_schema"),
+            )
+            self.cfg["tools"] = self._parse_json_list_or_empty(
+                self.tools_box.get("1.0", "end"),
+                self.tr("settings_tools_json"),
+            )
+            self.cfg["safety_settings"] = self._parse_json_list_or_empty(
+                self.safety_settings_box.get("1.0", "end"),
+                self.tr("settings_safety_settings_json"),
+            )
+        except ValueError as exc:
+            msgbox.showwarning(self.tr("dialog_notice_title"), str(exc))
+            return
+
         self.cfg["use_backend_stream"] = bool(self.backend_stream_var.get())
         self.cfg["use_web_citations"] = bool(self.web_citations_var.get())
         try:
@@ -145,7 +585,16 @@ class SettingsDialog(ctk.CTkToplevel):
         except Exception:
             self.cfg["web_citation_max_results"] = 3
         self.cfg["backend_api_url"] = self.backend_url_var.get().strip()
+        self.cfg["backend_user_email"] = self.backend_email_var.get().strip()
         self.cfg["backend_access_token"] = self.backend_token_var.get().strip()
+
+        if self.cfg["use_backend_stream"] and not self.cfg["backend_access_token"]:
+            self.cfg["use_backend_stream"] = False
+            msgbox.showwarning(
+                self.tr("dialog_notice_title"),
+                self.tr("settings_backend_stream_disabled_no_token"),
+            )
+
         self.on_save(self.cfg)
         ctk.set_appearance_mode(self.cfg["theme"])
         self.destroy()
@@ -938,6 +1387,26 @@ class App(ctk.CTk):
         if self._is_busy:
             return
 
+        if self.cfg.get("use_backend_stream"):
+            backend_url = str(self.cfg.get("backend_api_url", "")).strip()
+            if not backend_url:
+                msgbox.showwarning(
+                    self.tr("dialog_notice_title"), self.tr("dialog_backend_url_missing")
+                )
+                self._set_status(self.tr("status_error"), "error")
+                return
+
+            token = str(self.cfg.get("backend_access_token", "")).strip()
+            if not token:
+                should_open_settings = msgbox.askyesno(
+                    self.tr("dialog_notice_title"),
+                    self.tr("dialog_backend_auth_open_settings"),
+                )
+                if should_open_settings:
+                    self._open_settings()
+                self._set_status(self.tr("status_error"), "error")
+                return
+
         self._is_busy = True
         self.chat.set_input_enabled(False)
         self._set_status(self.tr(status_key), "busy")
@@ -1015,10 +1484,39 @@ class App(ctk.CTk):
         self._update_meta()
         self.after(0, self._after_response)
 
+    @staticmethod
+    def _is_backend_auth_error(err: str) -> bool:
+        normalized = str(err or "").strip().lower()
+        auth_markers = (
+            "not authenticated",
+            "invalid authentication credentials",
+            "session revoked",
+            "session expired",
+            "401",
+            "unauthorized",
+            "forbidden",
+        )
+        return any(marker in normalized for marker in auth_markers)
+
     def _on_error(self, err: str):
         def _show():
-            self.chat.append_stream(f"\n❌ {self.tr('chat_error_prefix')}: {err}")
+            raw_error = str(err)
+            display_error = raw_error
+            auth_error = self._is_backend_auth_error(raw_error)
+            if auth_error:
+                display_error = self.tr("dialog_backend_auth_failed")
+
+            self.chat.append_stream(f"\n❌ {self.tr('chat_error_prefix')}: {display_error}")
             self._set_status(self.tr("status_error"), "error")
+
+            if auth_error:
+                should_open_settings = msgbox.askyesno(
+                    self.tr("dialog_notice_title"),
+                    self.tr("dialog_backend_auth_open_settings"),
+                )
+                if should_open_settings:
+                    self._open_settings()
+
             self._after_response()
 
         self.after(0, _show)
